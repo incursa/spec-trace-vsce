@@ -1,0 +1,122 @@
+{
+  "artifact_id": "SPEC-VSCE-EDITOR",
+  "artifact_type": "specification",
+  "title": "Spec Trace Spec File Custom Editor",
+  "domain": "spec-trace-vsce",
+  "capability": "spec-file-editor",
+  "status": "draft",
+  "owner": "spec-trace-vsce-maintainers",
+  "tags": [
+    "spec-trace",
+    "vsce",
+    "web-extension",
+    "custom-editor"
+  ],
+  "purpose": "Define the browser-safe custom editor for canonical Spec Trace specification files.",
+  "scope": "This specification covers opening, viewing, editing, validating, and saving canonical specification JSON files in a VS Code web extension. Custom commands, documentation-focused extensions, language-specific adapters, code lenses, repository automation, and non-spec artifact editors are out of scope for this initial pass.",
+  "context": "The first extension deliverable should let authors edit existing specification files directly in browser-hosted VS Code without relying on the C# Workbench runtime or any other local helper process.",
+  "requirements": [
+    {
+      "id": "REQ-VSCE-EDITOR-0001",
+      "title": "Run in the web extension host",
+      "statement": "The extension MUST run in the VS Code web extension host without requiring Node-only APIs, native binaries, or a separate local helper service."
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0002",
+      "title": "Register a structured custom editor",
+      "statement": "The extension MUST register a structured custom editor for supported canonical specification files so those files open in the structured editor by default, while the standard text editor remains available through VS Code's reopen flow."
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0003",
+      "title": "Recognize canonical specification files",
+      "statement": "The editor MUST treat a file as a canonical specification only when its repository-relative path is within the repository's specification area and its JSON content declares `artifact_type` as `specification` and conforms to the canonical specification shape.",
+      "notes": [
+        "This keeps non-spec JSON files from being opened as spec artifacts."
+      ]
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0004",
+      "title": "Confine repository access",
+      "statement": "The editor MUST confine file discovery, loading, and saving to the current workspace repository root."
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0005",
+      "title": "Expose document-level fields",
+      "statement": "The editor MUST display `artifact_id` and `artifact_type` and allow editing of `title`, `domain`, `capability`, `status`, `owner`, `purpose`, `scope`, `context`, `tags`, `related_artifacts`, `open_questions`, and `supplemental_sections`."
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0006",
+      "title": "Edit requirement ordering",
+      "statement": "The editor MUST display requirement records in file order and allow the user to add, remove, and reorder them."
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0007",
+      "title": "Edit requirement fields",
+      "statement": "The editor MUST allow editing of each requirement's `id`, `title`, `statement`, `coverage`, `trace`, and `notes` fields."
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0008",
+      "title": "Preserve schema-authorized extension data",
+      "statement": "The editor MUST preserve schema-authorized extension fields, including `x_...` fields, that the user does not modify.",
+      "notes": [
+        "Round-tripping should not discard untouched valid data."
+      ]
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0009",
+      "title": "Surface validation while editing",
+      "statement": "The editor MUST surface schema and requirement-grammar validation issues while the user edits the document."
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0010",
+      "title": "Block invalid saves",
+      "statement": "The editor MUST block a save when the current draft would violate the canonical specification schema or requirement grammar."
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0011",
+      "title": "Write deterministic JSON",
+      "statement": "The editor MUST write saved specification files as deterministic, human-readable JSON."
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0012",
+      "title": "Support text-editor fallback",
+      "statement": "The editor MUST let the user reopen the same file as plain text without altering the saved artifact."
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0013",
+      "title": "Detect external file changes",
+      "statement": "The editor MUST detect external file changes and prevent silent overwrite of newer content."
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0014",
+      "title": "Integrate undo and redo",
+      "statement": "The editor MUST map user edits into standard VS Code undo and redo behavior."
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0015",
+      "title": "Prefer VS Code-native controls",
+      "statement": "The editor MUST use VS Code-provided form controls when they can represent the required value shape and interaction without loss of fidelity.",
+      "notes": [
+        "This keeps the initial editor lightweight and avoids custom UI unless it is actually needed."
+      ]
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0016",
+      "title": "Use @incursa/ui-kit for custom controls",
+      "statement": "When VS Code-provided controls cannot represent a required editing interaction, the editor MUST use browser-safe custom controls from the `@incursa/ui-kit` package rather than introducing ad hoc bespoke widgets.",
+      "notes": [
+        "This requirement applies only to custom interactions; it does not force ui-kit usage for fields that native VS Code controls already cover."
+      ]
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0017",
+      "title": "Match controls to field semantics",
+      "statement": "The editor MUST render each editable field with a control that matches the underlying data semantics, including single-line text entry, multiline text entry, enumerated selection, boolean toggles, repeatable item editors, and ordered record editors."
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0018",
+      "title": "Surface validation at the smallest applicable scope",
+      "statement": "The editor MUST present validation failures at the smallest relevant scope, using inline field feedback for field-local problems and document-level feedback for cross-field or document-shape problems."
+    }
+  ]
+}
