@@ -1,27 +1,31 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
+import { SPECIFICATION_CUSTOM_EDITOR_VIEW_TYPE, SpecificationCustomEditorProvider } from './editor/host/specificationCustomEditor.js';
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "spec-trace-vsce" is now active in the web extension host!');
+export function activate(context: vscode.ExtensionContext): void {
+	const provider = new SpecificationCustomEditorProvider(context);
+	const openSmokeFixture = vscode.commands.registerCommand('spec-trace-vsce.openSmokeFixture', async () => {
+		console.log('[spec-trace-vsce] openSmokeFixture command invoked');
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		if (!workspaceFolder) {
+			throw new Error('No workspace folder is open.');
+		}
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('spec-trace-vsce.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from Spec Trace in a web extension host!');
+		const target = vscode.Uri.joinPath(workspaceFolder.uri, 'specs', 'requirements', 'spec-trace-vsce', 'SPEC-VSCE-EDITOR.json');
+		console.log('[spec-trace-vsce] opening smoke fixture', target.toString());
+		await vscode.commands.executeCommand('vscode.openWith', target, SPECIFICATION_CUSTOM_EDITOR_VIEW_TYPE);
+		console.log('[spec-trace-vsce] requested custom editor open');
 	});
 
-	context.subscriptions.push(disposable);
+	context.subscriptions.push(
+		openSmokeFixture,
+		vscode.window.registerCustomEditorProvider(SPECIFICATION_CUSTOM_EDITOR_VIEW_TYPE, provider, {
+			supportsMultipleEditorsPerDocument: false,
+			webviewOptions: {
+				retainContextWhenHidden: true
+			}
+		})
+	);
 }
 
-// This method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate(): void {}

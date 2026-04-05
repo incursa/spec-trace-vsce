@@ -14,16 +14,34 @@
   "contributes": {
     "commands": [
       {
-        "command": "spec-trace-vsce.helloWorld",
-        "title": "Hello World"
+        "command": "spec-trace-vsce.openSmokeFixture",
+        "title": "Spec Trace: Open Smoke Fixture",
+        "category": "Spec Trace"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "spec-trace-vsce.specFileEditor",
+        "displayName": "Spec Trace Specification Editor",
+        "selector": [
+          {
+            "filenamePattern": "**/specs/requirements/**/*.json"
+          }
+        ],
+        "priority": "default"
       }
     ]
   },
+  "activationEvents": [
+    "onCustomEditor:spec-trace-vsce.specFileEditor"
+  ],
   "scripts": {
-    "test": "vscode-test-web --browserType=chromium --extensionDevelopmentPath=. --extensionTestsPath=dist/web/test/suite/extensionTests.js",
+    "test": "npm run test:web && npm run test:webview",
     "pretest": "npm run compile-web",
     "vscode:prepublish": "npm run package-web",
     "compile-web": "npm run check-types && npm run lint && node esbuild.js",
+    "test:web": "vscode-test-web --browserType=chromium --extensionDevelopmentPath=. --extensionTestsPath=dist/web/test/suite/extensionTests.js",
+    "test:webview": "node scripts/webview-smoke.mjs",
     "watch-web": "npm-run-all -p watch-web:*",
     "watch-web:esbuild": "node esbuild.js --watch",
     "watch-web:tsc": "tsc --noEmit --watch --project tsconfig.json",
@@ -41,6 +59,7 @@
     "mocha": "^11.7.5",
     "typescript": "^5.9.3",
     "@vscode/test-web": "^0.0.80",
+    "playwright": "^1.59.1",
     "esbuild": "^0.27.3",
     "glob": "^13.0.6",
     "npm-run-all": "^4.1.5",
