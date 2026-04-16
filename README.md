@@ -89,9 +89,8 @@ npm run run-in-browser
 
 ## Known Gaps Before Marketplace Release
 
-- The extension manifest still needs a real Marketplace `publisher`.
-- The repository, homepage, issue tracker, and license metadata are not finalized yet.
-- The release packaging and publish flow still need account-specific credentials and marketplace setup.
+- The release packaging and publish flow still need a Marketplace PAT and the final publish step.
+- The extension is still marked as preview while the surface matures.
 
 ## Release Notes
 

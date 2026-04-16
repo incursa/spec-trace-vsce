@@ -2,13 +2,27 @@
   "name": "spec-trace-vsce",
   "displayName": "Spec Trace",
   "description": "Browse Spec Trace artifacts and edit specification requirements in a dense custom editor.",
-  "version": "0.0.1",
+  "version": "1.0.6",
+  "publisher": "incursa",
+  "license": "SEE LICENSE IN LICENSE",
   "engines": {
     "vscode": "^1.110.0"
   },
   "preview": true,
   "pricing": "Free",
   "markdown": "github",
+  "galleryBanner": {
+    "color": "#35357A",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/incursa/spec-trace-vsce.git"
+  },
+  "homepage": "https://github.com/incursa/spec-trace-vsce",
+  "bugs": {
+    "url": "https://github.com/incursa/spec-trace-vsce/issues"
+  },
   "categories": [
     "Other",
     "Testing"

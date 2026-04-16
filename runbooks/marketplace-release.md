@@ -28,6 +28,14 @@ The following manifest data must be finalized before a real Marketplace publish:
 - `homepage`
 - `bugs`
 
+Current values are now wired in:
+
+- `publisher`: `incursa`
+- `license`: `Apache-2.0`
+- `repository`: `https://github.com/incursa/spec-trace-vsce`
+- `homepage`: `https://github.com/incursa/spec-trace-vsce`
+- `bugs`: `https://github.com/incursa/spec-trace-vsce/issues`
+
 ## Assets
 
 The repository now includes marketplace-facing images:
@@ -72,7 +80,5 @@ If this becomes part of CI, prefer a non-interactive release workflow with a sto
 
 ## Current Blocking Items
 
-- No Marketplace publisher identifier is configured in `package.json`.
-- No repository metadata is configured in `package.json`.
-- No license file is present at the repo root.
+- A Marketplace PAT is still required for the actual `vsce publish` step.
 - No automated publish workflow exists yet.
