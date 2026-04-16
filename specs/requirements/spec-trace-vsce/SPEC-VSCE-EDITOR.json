@@ -42,7 +42,7 @@
     {
       "id": "REQ-VSCE-EDITOR-0005",
       "title": "Expose document-level fields",
-      "statement": "The editor MUST display `artifact_id` and `artifact_type` and allow editing of `title`, `domain`, `capability`, `status`, `owner`, `purpose`, `scope`, `context`, `tags`, `related_artifacts`, `open_questions`, and `supplemental_sections`."
+      "statement": "The editor MUST display `artifact_id` and `artifact_type` and allow editing of `title`, `domain`, `capability`, `status`, `owner`, `purpose`, `scope`, `context`, `tags`, `related_artifacts`, `open_questions`, and `supplemental_sections`, including the canonical structured supplemental-section shape with `heading` and `content`."
     },
     {
       "id": "REQ-VSCE-EDITOR-0006",
@@ -52,7 +52,7 @@
     {
       "id": "REQ-VSCE-EDITOR-0007",
       "title": "Edit requirement fields",
-      "statement": "The editor MUST allow editing of each requirement's `id`, `title`, `statement`, `coverage`, `trace`, and `notes` fields."
+      "statement": "The editor MUST allow editing of each requirement's human-authored `id`, `title`, `statement`, and `notes` fields while preserving the canonical structured `coverage` and `trace` fields without data loss even when they are not directly editable in the structured UI."
     },
     {
       "id": "REQ-VSCE-EDITOR-0008",
@@ -121,7 +121,7 @@
     {
       "id": "REQ-VSCE-EDITOR-0019",
       "title": "Present a derived coverage summary",
-      "statement": "The editor MUST present a derived coverage summary for the specification that classifies each requirement as Covered when it has at least one `coverage` entry, Partial when it has no `coverage` entries but does have `trace` or `notes` entries, and Missing when it has no `coverage`, `trace`, or `notes` entries.",
+      "statement": "The editor MUST present a derived coverage summary for the specification that classifies each requirement as Covered when it defines one or more canonical `coverage` expectation fields, Partial when it has no `coverage` expectations but does have `trace` links or `notes`, and Missing when it has no `coverage`, `trace`, or `notes` data.",
       "notes": [
         "The coverage summary is an editor view over existing requirement fields and does not add new persisted document data."
       ]
@@ -129,7 +129,7 @@
     {
       "id": "REQ-VSCE-EDITOR-0020",
       "title": "Support coverage drill-down",
-      "statement": "The editor MUST let the user drill into a requirement from the coverage summary and reveal that requirement's coverage, trace, and notes details."
+      "statement": "The editor MUST let the user drill into a requirement from the coverage summary and reveal that requirement's canonical `coverage`, `trace`, and `notes` details using controls that preserve the standard structured data shape."
     }
   ]
 }

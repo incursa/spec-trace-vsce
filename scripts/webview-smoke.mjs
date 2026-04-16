@@ -593,13 +593,20 @@ async function seedCoverageEvidence(workspaceRoot) {
 	}
 
 	const coveredRequirement = document.requirements[0];
-	coveredRequirement.coverage = ['browser host smoke coverage'];
-	coveredRequirement.trace = [];
-	coveredRequirement.notes = [];
+	coveredRequirement.coverage = {
+		positive: 'required',
+		negative: 'optional',
+		edge: 'required',
+		fuzz: 'deferred'
+	};
+	coveredRequirement.trace = undefined;
+	coveredRequirement.notes = undefined;
 
 	const partialRequirement = document.requirements[1];
-	partialRequirement.coverage = [];
-	partialRequirement.trace = ['REQ-VSCE-EDITOR-0002'];
+	partialRequirement.coverage = undefined;
+	partialRequirement.trace = {
+		related: ['SPEC-VSCE-EDITOR']
+	};
 	partialRequirement.notes = ['Verified in browser smoke.'];
 
 	await fs.writeFile(specPath, `${JSON.stringify(document, undefined, 2)}\n`);
@@ -617,8 +624,8 @@ async function seedCoverageEvidence(workspaceRoot) {
 }
 
 function summarizeCoverageRequirement(requirement) {
-	const coverageCount = countMeaningfulStrings(requirement.coverage);
-	const traceCount = countMeaningfulStrings(requirement.trace);
+	const coverageCount = countMeaningfulCoverage(requirement.coverage);
+	const traceCount = countMeaningfulTraceReferences(requirement.trace);
 	const notesCount = countMeaningfulStrings(requirement.notes);
 
 	return {
@@ -637,6 +644,32 @@ function countMeaningfulStrings(value) {
 	return value.filter((item) => typeof item === 'string' && item.trim().length > 0).length;
 }
 
+function countMeaningfulCoverage(value) {
+	if (!value || Array.isArray(value) || typeof value !== 'object') {
+		return 0;
+	}
+
+	return ['positive', 'negative', 'edge', 'fuzz']
+		.filter((key) => typeof value[key] === 'string' && value[key].trim().length > 0)
+		.length;
+}
+
+function countMeaningfulTraceReferences(value) {
+	if (!value || Array.isArray(value) || typeof value !== 'object') {
+		return 0;
+	}
+
+	return [
+		value.satisfied_by,
+		value.implemented_by,
+		value.verified_by,
+		value.derived_from,
+		value.supersedes,
+		value.upstream_refs,
+		value.related
+	].reduce((total, item) => total + countMeaningfulStrings(item), 0);
+}
+
 function coverageSummaryMetaText(summary) {
 	if (summary.totalRequirements === 0) {
 		return 'Add requirements to start tracking coverage.';
@@ -647,12 +680,12 @@ function coverageSummaryMetaText(summary) {
 	}
 
 	if (summary.missingCount === 0) {
-		return `${summary.partialCount} partial requirement${summary.partialCount === 1 ? ' still needs' : 's still need'} coverage entries.`;
+		return `${summary.partialCount} partial requirement${summary.partialCount === 1 ? ' still needs' : 's still need'} coverage expectations.`;
 	}
 
 	const missingLabel = `${summary.missingCount} missing requirement${summary.missingCount === 1 ? ' has' : 's have'} no evidence`;
 	const partialLabel = summary.partialCount > 0
-		? ` ${summary.partialCount} partial requirement${summary.partialCount === 1 ? ' still needs' : 's still need'} coverage entries.`
+		? ` ${summary.partialCount} partial requirement${summary.partialCount === 1 ? ' still needs' : 's still need'} coverage expectations.`
 		: '';
 	return `${missingLabel}.${partialLabel}`.trim();
 }

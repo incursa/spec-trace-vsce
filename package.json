@@ -2,7 +2,7 @@
   "name": "spec-trace-vsce",
   "displayName": "Spec Trace",
   "description": "Browse Spec Trace artifacts and edit specification requirements in a dense custom editor.",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "publisher": "incursa",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {
@@ -43,6 +43,16 @@
       {
         "command": "spec-trace-vsce.openSmokeFixture",
         "title": "Spec Trace: Open Smoke Fixture",
+        "category": "Spec Trace"
+      },
+      {
+        "command": "spec-trace-vsce.initializeRepository",
+        "title": "Spec Trace: Initialize Repository",
+        "category": "Spec Trace"
+      },
+      {
+        "command": "spec-trace-vsce.createArtifact",
+        "title": "Spec Trace: Create Artifact",
         "category": "Spec Trace"
       },
       {
@@ -90,6 +100,8 @@
   "activationEvents": [
     "onCustomEditor:spec-trace-vsce.specFileEditor",
     "onView:specTraceExplorer.navigator",
+    "onCommand:spec-trace-vsce.initializeRepository",
+    "onCommand:spec-trace-vsce.createArtifact",
     "onCommand:spec-trace-vsce.openRepositoryExplorer",
     "onCommand:spec-trace-vsce.refreshRepositoryExplorer"
   ],
@@ -116,6 +128,7 @@
     "@types/mocha": "^10.0.10",
     "@types/vscode": "^1.110.0",
     "@vscode/test-web": "^0.0.80",
+    "ajv": "^8.17.1",
     "assert": "^2.1.0",
     "esbuild": "^0.27.3",
     "eslint": "^9.39.3",

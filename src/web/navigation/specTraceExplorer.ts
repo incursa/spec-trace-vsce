@@ -2,11 +2,19 @@ import * as vscode from 'vscode';
 
 import {
 	parseSpecificationDocument
-} from '../editor/core/specification.js';
+} from '../editor/core/specificationValidation.js';
 
 import {
 	SpecificationCustomEditorProvider
 } from '../editor/host/specificationCustomEditor.js';
+import {
+	RepositoryManager,
+	SPEC_TRACE_CREATE_ARTIFACT_COMMAND,
+	SPEC_TRACE_INITIALIZE_REPOSITORY_COMMAND
+} from '../management/repositoryManager.js';
+import type {
+	ArtifactKind
+} from '../management/repositoryManager.js';
 
 export const SPEC_TRACE_EXPLORER_CONTAINER_ID = 'specTraceExplorer';
 export const SPEC_TRACE_EXPLORER_VIEW_ID = 'specTraceExplorer.navigator';
@@ -15,7 +23,7 @@ export const SPEC_TRACE_REFRESH_EXPLORER_COMMAND = 'spec-trace-vsce.refreshRepos
 export const SPEC_TRACE_OPEN_TREE_ITEM_COMMAND = 'spec-trace-vsce.openTreeItem';
 
 type ArtifactCategoryId = 'specifications' | 'architecture' | 'workItems' | 'verification';
-type TreeNodeKind = 'category' | 'domain' | 'specification' | 'markdown' | 'requirement';
+type TreeNodeKind = 'category' | 'domain' | 'specification' | 'markdown' | 'requirement' | 'action';
 
 interface CategoryDefinition {
 	id: ArtifactCategoryId;
@@ -68,6 +76,10 @@ interface TreeNodeData {
 	domainId?: string;
 	document?: ArtifactDocumentSnapshot;
 	requirement?: RequirementSnapshot;
+	action?: {
+		command: string;
+		arguments?: unknown[];
+	};
 }
 
 const categoryDefinitions: CategoryDefinition[] = [
@@ -105,9 +117,10 @@ const excludedWorkspaceGlobs = '{**/node_modules/**,**/dist/**,**/.git/**,**/.vs
 
 export function registerSpecTraceExplorer(
 	context: vscode.ExtensionContext,
-	editorProvider: SpecificationCustomEditorProvider
+	editorProvider: SpecificationCustomEditorProvider,
+	repositoryManager: RepositoryManager
 ): SpecTraceExplorerProvider {
-	const provider = new SpecTraceExplorerProvider(editorProvider);
+	const provider = new SpecTraceExplorerProvider(editorProvider, repositoryManager);
 	const treeView = vscode.window.createTreeView(SPEC_TRACE_EXPLORER_VIEW_ID, {
 		treeDataProvider: provider,
 		showCollapseAll: true
@@ -136,10 +149,14 @@ export class SpecTraceExplorerProvider implements vscode.TreeDataProvider<SpecTr
 	private readonly _watchers: vscode.Disposable[] = [];
 
 	private _snapshotPromise: Promise<RepositorySnapshot> | undefined;
+	private _repositoryStatePromise: Promise<'missing' | 'partial' | 'ready'> | undefined;
 
 	public readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-	public constructor(private readonly editorProvider: SpecificationCustomEditorProvider) {
+	public constructor(
+		private readonly editorProvider: SpecificationCustomEditorProvider,
+		private readonly repositoryManager: RepositoryManager
+	) {
 		const workspaceFolder = this.workspaceFolder;
 		if (!workspaceFolder) {
 			return;
@@ -171,6 +188,7 @@ export class SpecTraceExplorerProvider implements vscode.TreeDataProvider<SpecTr
 
 	public dispose(): void {
 		this._snapshotPromise = undefined;
+		this._repositoryStatePromise = undefined;
 		this._onDidChangeTreeData.dispose();
 		for (const watcher of this._watchers) {
 			watcher.dispose();
@@ -179,6 +197,7 @@ export class SpecTraceExplorerProvider implements vscode.TreeDataProvider<SpecTr
 
 	public refresh(): void {
 		this._snapshotPromise = undefined;
+		this._repositoryStatePromise = undefined;
 		this._onDidChangeTreeData.fire();
 	}
 
@@ -188,6 +207,7 @@ export class SpecTraceExplorerProvider implements vscode.TreeDataProvider<SpecTr
 
 	public async getChildren(element?: SpecTraceTreeItem): Promise<SpecTraceTreeItem[]> {
 		const snapshot = await this.getSnapshot();
+		const repositoryState = await this.getRepositoryState();
 
 		if (!element) {
 			return snapshot.categories.map((category) => createCategoryNode(category));
@@ -195,13 +215,29 @@ export class SpecTraceExplorerProvider implements vscode.TreeDataProvider<SpecTr
 
 		switch (element.data.kind) {
 			case 'category': {
+				if (repositoryState === 'missing') {
+					return [createInitializeActionNode(element.data.categoryId!)];
+				}
+
 				const category = snapshot.categories.find((entry) => entry.id === element.data.categoryId);
-				return category ? category.domains.map((domain) => createDomainNode(category.id, domain)) : [];
+				if (!category || category.domains.length === 0) {
+					return [createCategoryActionNode(element.data.categoryId!)];
+				}
+
+				return [
+					...category.domains.map((domain) => createDomainNode(category.id, domain)),
+					createCategoryActionNode(category.id)
+				];
 			}
 			case 'domain': {
 				const category = snapshot.categories.find((entry) => entry.id === element.data.categoryId);
 				const domain = category?.domains.find((entry) => entry.id === element.data.domainId);
-				return domain ? domain.documents.map((document) => createDocumentNode(element.data.categoryId!, domain.id, document)) : [];
+				return domain
+					? [
+						...domain.documents.map((document) => createDocumentNode(element.data.categoryId!, domain.id, document)),
+						createDomainActionNode(element.data.categoryId!, domain.id)
+					]
+					: [];
 			}
 			case 'specification': {
 				return element.data.document?.requirements?.map((requirement) => createRequirementNode(element.data.document!, requirement)) ?? [];
@@ -242,6 +278,16 @@ export class SpecTraceExplorerProvider implements vscode.TreeDataProvider<SpecTr
 				await this.editorProvider.revealRequirement(item.data.document.uri, item.data.requirement.index);
 				return;
 			}
+			case 'action': {
+				const action = item.data.action;
+				if (!action) {
+					return;
+				}
+
+				await vscode.commands.executeCommand(action.command, ...(action.arguments ?? []));
+				this.refresh();
+				return;
+			}
 			default:
 				return;
 		}
@@ -256,6 +302,17 @@ export class SpecTraceExplorerProvider implements vscode.TreeDataProvider<SpecTr
 		}
 
 		return this._snapshotPromise;
+	}
+
+	private async getRepositoryState(): Promise<'missing' | 'partial' | 'ready'> {
+		if (!this._repositoryStatePromise) {
+			this._repositoryStatePromise = this.repositoryManager.detectRepositoryState(this.workspaceFolder).catch((error) => {
+				console.error('[spec-trace-vsce] Failed to detect repository state', error);
+				return 'missing' as const;
+			});
+		}
+
+		return this._repositoryStatePromise;
 	}
 
 	private async buildSnapshot(): Promise<RepositorySnapshot> {
@@ -513,6 +570,62 @@ function createDomainNode(categoryId: ArtifactCategoryId, domain: DomainSnapshot
 	);
 }
 
+function createInitializeActionNode(categoryId: ArtifactCategoryId): SpecTraceTreeItem {
+	return new SpecTraceTreeItem(
+		'Initialize Spec Trace scaffold',
+		vscode.TreeItemCollapsibleState.None,
+		{
+			kind: 'action',
+			categoryId,
+			action: {
+				command: SPEC_TRACE_INITIALIZE_REPOSITORY_COMMAND
+			}
+		},
+		'Create the initial folder structure and seed files for this workspace.',
+		'Initialize the Spec Trace scaffold before creating artifacts.',
+		new vscode.ThemeIcon('rocket')
+	);
+}
+
+function createCategoryActionNode(categoryId: ArtifactCategoryId): SpecTraceTreeItem {
+	const artifactKind = artifactKindForCategory(categoryId);
+	return new SpecTraceTreeItem(
+		`Create ${artifactLabelForKind(artifactKind)}`,
+		vscode.TreeItemCollapsibleState.None,
+		{
+			kind: 'action',
+			categoryId,
+			action: {
+				command: SPEC_TRACE_CREATE_ARTIFACT_COMMAND,
+				arguments: [{ kind: artifactKind }]
+			}
+		},
+		`Add a new ${artifactLabelForKind(artifactKind).toLowerCase()} using the bundled template.`,
+		`Create a new ${artifactLabelForKind(artifactKind).toLowerCase()}.`,
+		new vscode.ThemeIcon('add')
+	);
+}
+
+function createDomainActionNode(categoryId: ArtifactCategoryId, domainId: string): SpecTraceTreeItem {
+	const artifactKind = artifactKindForCategory(categoryId);
+	return new SpecTraceTreeItem(
+		`Create ${artifactLabelForKind(artifactKind)}`,
+		vscode.TreeItemCollapsibleState.None,
+		{
+			kind: 'action',
+			categoryId,
+			domainId,
+			action: {
+				command: SPEC_TRACE_CREATE_ARTIFACT_COMMAND,
+				arguments: [{ kind: artifactKind, domain: domainId }]
+			}
+		},
+		`Add a new ${artifactLabelForKind(artifactKind).toLowerCase()} in the ${domainId} domain.`,
+		`Create a new ${artifactLabelForKind(artifactKind).toLowerCase()} in ${domainId}.`,
+		new vscode.ThemeIcon('add')
+	);
+}
+
 function createDocumentNode(
 	categoryId: ArtifactCategoryId,
 	domainId: string,
@@ -676,4 +789,35 @@ function normalizePath(path: string): string {
 
 function stringValue(value: unknown): string {
 	return typeof value === 'string' ? value.trim() : '';
+}
+
+function artifactKindForCategory(categoryId: ArtifactCategoryId): ArtifactKind {
+	switch (categoryId) {
+		case 'specifications':
+			return 'specification';
+		case 'architecture':
+			return 'architecture';
+		case 'workItems':
+			return 'workItem';
+		case 'verification':
+			return 'verification';
+	}
+
+	const unsupportedCategory: never = categoryId;
+	throw new Error(`Unsupported artifact category: ${unsupportedCategory}`);
+}
+
+function artifactLabelForKind(kind: ArtifactKind): string {
+	switch (kind) {
+		case 'specification':
+			return 'Specification';
+		case 'architecture':
+			return 'Architecture Artifact';
+		case 'workItem':
+			return 'Work Item';
+		case 'verification':
+			return 'Verification Artifact';
+	}
+
+	return 'Artifact';
 }

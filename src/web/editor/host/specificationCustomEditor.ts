@@ -4,12 +4,14 @@ import {
 	cloneSpecificationDocument,
 	isSpecificationPath,
 	normalizeWorkspaceRelativePath,
-	parseSpecificationDocument,
 	serializeSpecificationDocument,
 	SpecificationDocument,
-	ValidationIssue,
-	validateSpecificationDocument
+	ValidationIssue
 } from '../core/specification.js';
+import {
+	parseSpecificationDocument,
+	validateSpecificationDocument
+} from '../core/specificationValidation.js';
 
 export const SPECIFICATION_CUSTOM_EDITOR_VIEW_TYPE = 'spec-trace-vsce.specFileEditor';
 
@@ -155,6 +157,7 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 						void this.syncDocument(document, 'redo');
 					}
 				});
+				void this.syncDocument(document, 'external');
 				return;
 			}
 

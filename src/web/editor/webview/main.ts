@@ -9,11 +9,12 @@ import {
 	serializeSpecificationDocument,
 	summarizeRequirementCoverage,
 	summarizeSpecificationCoverage,
+	RequirementCoverageExpectation,
+	RequirementTrace,
 	SpecificationDocument,
 	SpecificationRequirement,
 	SupplementalSection,
-	ValidationIssue,
-	validateSpecificationDocument
+	ValidationIssue
 } from '../core/specification.js';
 
 interface VsCodeApi {
@@ -128,7 +129,7 @@ const persistedState = vscode.getState<SpecificationEditorWebviewState>();
 
 if (persistedState?.document) {
 	currentDocument = normalizeEditableDocument(cloneSpecificationDocument(persistedState.document));
-	currentIssues = persistedState.issues ?? validateSpecificationDocument(currentDocument);
+	currentIssues = persistedState.issues ?? [];
 	currentDirty = persistedState.isDirty ?? false;
 	currentExternalConflict = persistedState.externalConflict ?? false;
 	lastCommittedSerialized = persistedState.lastCommittedSerialized ?? serializeSpecificationDocument(currentDocument);
@@ -489,11 +490,11 @@ function createInfoHint(helpText: string, label = 'More information'): HTMLEleme
 function getCoverageStatusExplanation(status: ReturnType<typeof summarizeRequirementCoverage>['status']): string {
 	switch (status) {
 		case 'covered':
-			return 'Covered requirements have one or more coverage entries.';
+			return 'Covered requirements define one or more coverage expectation fields.';
 		case 'partial':
-			return 'Partial requirements have trace or notes evidence, but no coverage entries yet.';
+			return 'Partial requirements have trace links or notes, but no coverage expectation fields yet.';
 		case 'missing':
-			return 'Missing requirements have no coverage, trace, or notes evidence yet.';
+			return 'Missing requirements have no coverage expectations, trace links, or notes yet.';
 	}
 }
 
@@ -697,7 +698,7 @@ function createCoverageSelectedRequirementCard(
 	header.append(
 		createSectionHeading(
 			'Selected requirement',
-			'Read-only coverage evidence for the selected requirement.'
+			'Read-only coverage expectations, trace links, and notes for the selected requirement.'
 		)
 	);
 
@@ -714,8 +715,8 @@ function createCoverageSelectedRequirementCard(
 	body.className = 'coverage-selected-body';
 	body.append(
 		createCoverageRequirementMetaGrid(requirement, coverageSummary),
-		createCoverageEvidenceDisclosure('Coverage entries', requirement.coverage ?? [], 'No coverage evidence has been recorded yet.', requirementIndex, 'coverage'),
-		createCoverageEvidenceDisclosure('Trace entries', requirement.trace ?? [], 'No trace evidence has been recorded yet.', requirementIndex, 'trace'),
+		createCoverageEvidenceDisclosure('Coverage', requirement.coverage, 'No coverage expectations have been recorded yet.', requirementIndex, 'coverage'),
+		createCoverageEvidenceDisclosure('Trace', requirement.trace, 'No trace links have been recorded yet.', requirementIndex, 'trace'),
 		createCoverageEvidenceDisclosure('Notes entries', requirement.notes ?? [], 'No notes have been recorded yet.', requirementIndex, 'notes')
 	);
 
@@ -737,8 +738,8 @@ function createCoverageRequirementMetaGrid(
 		createReadonlyField('Title', stringValue(requirement.title) || 'Untitled requirement', undefined, 'coverage-selected-title'),
 		createReadonlyField('Status', formatCoverageStatusLabel(coverageSummary.status), undefined, 'coverage-selected-status'),
 		createReadonlyField('Statement', stringValue(requirement.statement) || 'No statement recorded.', 'Normative statement text.', 'coverage-selected-statement'),
-		createReadonlyField('Coverage entries', String(coverageSummary.coverageCount), undefined, 'coverage-selected-coverage-count'),
-		createReadonlyField('Trace entries', String(coverageSummary.traceCount), undefined, 'coverage-selected-trace-count'),
+		createReadonlyField('Coverage fields', String(coverageSummary.coverageCount), undefined, 'coverage-selected-coverage-count'),
+		createReadonlyField('Trace refs', String(coverageSummary.traceCount), undefined, 'coverage-selected-trace-count'),
 		createReadonlyField('Notes entries', String(coverageSummary.notesCount), undefined, 'coverage-selected-notes-count')
 	);
 
@@ -747,32 +748,18 @@ function createCoverageRequirementMetaGrid(
 
 function createCoverageEvidenceDisclosure(
 	title: string,
-	items: string[],
+	value: unknown,
 	emptyMessage: string,
 	requirementIndex: number,
 	fieldName: 'coverage' | 'trace' | 'notes'
 ): HTMLElement {
 	const body = document.createElement('div');
 	body.className = 'coverage-evidence-body';
-
-	if (items.length === 0) {
-		body.append(createCard(title, emptyMessage));
-	} else {
-		const list = document.createElement('inc-list-group');
-		list.setAttribute('dense', '');
-		list.className = 'coverage-evidence-list';
-		items.forEach((item, index) => {
-			const entry = document.createElement('div');
-			entry.textContent = item;
-			entry.dataset.validationPath = `requirements[${requirementIndex}].${fieldName}[${index}]`;
-			list.append(entry);
-		});
-		body.append(list);
-	}
+	body.append(renderReadonlyStructuredValue(value, emptyMessage, `requirements[${requirementIndex}].${fieldName}`));
 
 	return createCollapsibleCard(
 		title,
-		`${items.length} item${items.length === 1 ? '' : 's'}`,
+		`${countStructuredValueEntries(value)} item${countStructuredValueEntries(value) === 1 ? '' : 's'}`,
 		body,
 		{
 			className: `coverage-evidence-card coverage-evidence-card--${fieldName}`,
@@ -1843,8 +1830,8 @@ function createRequirementViewCard(
 		createReadonlyRequirementField('Requirement id', stringValue(requirement.id).trim() || '—', 'Canonical requirement identifier.'),
 		createReadonlyRequirementField('Title', stringValue(requirement.title).trim() || 'Untitled requirement'),
 		createReadonlyRequirementField('Statement', stringValue(requirement.statement).trim() || 'No requirement statement recorded.', 'Normative statement text.', true),
-		createRequirementEvidenceViewCard('Coverage', requirement.coverage ?? [], 'No coverage entries recorded yet.'),
-		createRequirementEvidenceViewCard('Trace', requirement.trace ?? [], 'No trace entries recorded yet.'),
+		createRequirementEvidenceViewCard('Coverage', requirement.coverage, 'No coverage expectations recorded yet.'),
+		createRequirementEvidenceViewCard('Trace', requirement.trace, 'No trace links recorded yet.'),
 		createRequirementEvidenceViewCard('Notes', requirement.notes ?? [], 'No notes recorded yet.')
 	);
 
@@ -1922,14 +1909,14 @@ function createRequirementEditCard(
 		createRequirementListField(path, 'notes', 'Notes', requirement.notes ?? [], true, 'Note'),
 		createRequirementEvidenceViewCard(
 			'Coverage',
-			requirement.coverage ?? [],
-			'No coverage entries recorded yet.',
+			requirement.coverage,
+			'No coverage expectations recorded yet.',
 			'Coverage is shown for reference here and is usually produced outside this editor.'
 		),
 		createRequirementEvidenceViewCard(
 			'Trace',
-			requirement.trace ?? [],
-			'No trace entries recorded yet.',
+			requirement.trace,
+			'No trace links recorded yet.',
 			'Trace is shown for reference here and is usually produced outside this editor.'
 		)
 	);
@@ -1975,7 +1962,7 @@ function createReadonlyRequirementField(
 
 function createRequirementEvidenceViewCard(
 	title: string,
-	items: string[],
+	value: unknown,
 	emptyMessage: string,
 	descriptionText?: string
 ): HTMLElement {
@@ -1987,33 +1974,97 @@ function createRequirementEvidenceViewCard(
 	header.append(
 		createSectionHeading(
 			title,
-			descriptionText ?? (items.length === 0 ? emptyMessage : `${items.length} item${items.length === 1 ? '' : 's'} recorded.`)
+			descriptionText ?? (() => {
+				const itemCount = countStructuredValueEntries(value);
+				return itemCount === 0 ? emptyMessage : `${itemCount} item${itemCount === 1 ? '' : 's'} recorded.`;
+			})()
 		)
 	);
 
 	const body = document.createElement('div');
 	body.slot = 'body';
 	body.className = 'coverage-evidence-body';
-
-	if (items.length === 0) {
-		const emptyState = document.createElement('p');
-		emptyState.className = 'inc-text inc-text--small inc-text--muted requirement-readonly-empty';
-		emptyState.textContent = emptyMessage;
-		body.append(emptyState);
-	} else {
-		const list = document.createElement('inc-list-group');
-		list.setAttribute('dense', '');
-		list.className = 'coverage-evidence-list';
-		items.forEach((item) => {
-			const entry = document.createElement('div');
-			entry.textContent = item;
-			list.append(entry);
-		});
-		body.append(list);
-	}
+	body.append(renderReadonlyStructuredValue(value, emptyMessage));
 
 	card.append(header, body);
 	return card;
+}
+
+function renderReadonlyStructuredValue(value: unknown, emptyMessage: string, pathPrefix?: string): HTMLElement {
+	if (Array.isArray(value)) {
+		if (value.length === 0) {
+			return createReadonlyEmptyState(emptyMessage);
+		}
+
+		const list = document.createElement('inc-list-group');
+		list.setAttribute('dense', '');
+		list.className = 'coverage-evidence-list';
+		value.forEach((item, index) => {
+			const entry = document.createElement('div');
+			entry.textContent = typeof item === 'string' ? item : JSON.stringify(item);
+			if (pathPrefix) {
+				entry.dataset.validationPath = `${pathPrefix}[${index}]`;
+			}
+			list.append(entry);
+		});
+		return list;
+	}
+
+	if (isPlainObject(value)) {
+		const entries = Object.entries(value).filter(([, item]) => {
+			if (Array.isArray(item)) {
+				return item.length > 0;
+			}
+
+			return typeof item === 'string' && item.trim().length > 0;
+		});
+
+		if (entries.length === 0) {
+			return createReadonlyEmptyState(emptyMessage);
+		}
+
+		const list = document.createElement('inc-list-group');
+		list.setAttribute('dense', '');
+		list.className = 'coverage-evidence-list';
+		entries.forEach(([key, item]) => {
+			const entry = document.createElement('div');
+			entry.textContent = Array.isArray(item)
+				? `${key}: ${item.join(', ')}`
+				: `${key}: ${String(item)}`;
+			if (pathPrefix) {
+				entry.dataset.validationPath = `${pathPrefix}.${key}`;
+			}
+			list.append(entry);
+		});
+		return list;
+	}
+
+	return createReadonlyEmptyState(emptyMessage);
+}
+
+function createReadonlyEmptyState(message: string): HTMLElement {
+	const emptyState = document.createElement('p');
+	emptyState.className = 'inc-text inc-text--small inc-text--muted requirement-readonly-empty';
+	emptyState.textContent = message;
+	return emptyState;
+}
+
+function countStructuredValueEntries(value: unknown): number {
+	if (Array.isArray(value)) {
+		return value.length;
+	}
+
+	if (isPlainObject(value)) {
+		return Object.values(value).reduce<number>((total, item) => {
+			if (Array.isArray(item)) {
+				return total + item.length;
+			}
+
+			return total + (typeof item === 'string' && item.trim().length > 0 ? 1 : 0);
+		}, 0);
+	}
+
+	return 0;
 }
 
 function createMetricBadge(id: string, label: string, tone: 'info' | 'success' | 'warning' | 'danger'): HTMLElement {
@@ -2072,7 +2123,7 @@ function createRequirementField(
 
 function createRequirementListField(
 	requirementPath: string,
-	fieldName: 'coverage' | 'trace' | 'notes',
+	fieldName: 'notes',
 	labelText: string,
 	items: string[],
 	multiline: boolean,
@@ -2773,14 +2824,14 @@ function getCoverageSummaryState(summary: ReturnType<typeof summarizeSpecificati
 	if (summary.missingCount === 0) {
 		return {
 			label: coverageLabel,
-			meta: `${summary.partialCount} partial requirement${summary.partialCount === 1 ? ' still needs' : 's still need'} coverage entries.`,
+			meta: `${summary.partialCount} partial requirement${summary.partialCount === 1 ? ' still needs' : 's still need'} coverage expectations.`,
 			tone: 'warning'
 		};
 	}
 
 	const missingLabel = `${summary.missingCount} missing requirement${summary.missingCount === 1 ? ' has' : 's have'} no evidence`;
 	const partialLabel = summary.partialCount > 0
-		? ` ${summary.partialCount} partial requirement${summary.partialCount === 1 ? ' still needs' : 's still need'} coverage entries.`
+		? ` ${summary.partialCount} partial requirement${summary.partialCount === 1 ? ' still needs' : 's still need'} coverage expectations.`
 		: '';
 
 	return {
@@ -2986,7 +3037,6 @@ function commitCurrentDocument(force = false): void {
 		return;
 	}
 
-	currentIssues = validateSpecificationDocument(currentDocument);
 	currentDirty = true;
 	lastCommittedSerialized = serialized;
 	persistWebviewState();
@@ -3024,9 +3074,9 @@ function normalizeEditableDocument(document: SpecificationDocument): Specificati
 	normalized.purpose = stringValue(normalized.purpose);
 	normalized.scope = stringValue(normalized.scope);
 	normalized.context = stringValue(normalized.context);
-	normalized.tags = normalizeStringArray(normalized.tags);
-	normalized.related_artifacts = normalizeStringArray(normalized.related_artifacts);
-	normalized.open_questions = normalizeStringArray(normalized.open_questions);
+	normalized.tags = normalizeOptionalStringArray(normalized.tags);
+	normalized.related_artifacts = normalizeOptionalStringArray(normalized.related_artifacts);
+	normalized.open_questions = normalizeOptionalStringArray(normalized.open_questions);
 	normalized.supplemental_sections = normalizeSupplementalSectionArray(normalized.supplemental_sections);
 	normalized.requirements = Array.isArray(normalized.requirements)
 		? (normalized.requirements as unknown[]).map((requirement: unknown) => normalizeRequirement(requirement))
@@ -3043,9 +3093,9 @@ function normalizeRequirement(requirement: unknown): SpecificationRequirement {
 	normalized.id = stringValue(normalized.id);
 	normalized.title = stringValue(normalized.title);
 	normalized.statement = stringValue(normalized.statement);
-	normalized.coverage = normalizeStringArray(normalized.coverage);
-	normalized.trace = normalizeStringArray(normalized.trace);
-	normalized.notes = normalizeStringArray(normalized.notes);
+	normalized.coverage = normalizeRequirementCoverageExpectation(normalized.coverage);
+	normalized.trace = normalizeRequirementTrace(normalized.trace);
+	normalized.notes = normalizeOptionalStringArray(normalized.notes);
 	return normalized;
 }
 
@@ -3057,9 +3107,25 @@ function normalizeStringArray(value: string[] | undefined): string[] {
 	return value.map((item) => (typeof item === 'string' ? item : ''));
 }
 
-function normalizeSupplementalSectionArray(value: SupplementalSection[] | undefined): SupplementalSection[] {
+function normalizeOptionalStringArray(value: string[] | undefined): string[] | undefined {
 	if (!Array.isArray(value)) {
-		return [];
+		return undefined;
+	}
+
+	if (value.length === 0) {
+		return undefined;
+	}
+
+	return normalizeStringArray(value);
+}
+
+function normalizeSupplementalSectionArray(value: SupplementalSection[] | undefined): SupplementalSection[] | undefined {
+	if (!Array.isArray(value)) {
+		return undefined;
+	}
+
+	if (value.length === 0) {
+		return undefined;
 	}
 
 	return value.map((item) => {
@@ -3079,6 +3145,35 @@ function createEmptySupplementalSection(): SupplementalSection {
 		heading: '',
 		content: ''
 	};
+}
+
+function normalizeRequirementCoverageExpectation(value: RequirementCoverageExpectation | undefined): RequirementCoverageExpectation | undefined {
+	if (!isPlainObject(value)) {
+		return undefined;
+	}
+
+	const normalized = cloneSpecificationDocument(value as RequirementCoverageExpectation);
+	normalized.positive = stringValue(normalized.positive) as RequirementCoverageExpectation['positive'];
+	normalized.negative = stringValue(normalized.negative) as RequirementCoverageExpectation['negative'];
+	normalized.edge = stringValue(normalized.edge) as RequirementCoverageExpectation['edge'];
+	normalized.fuzz = stringValue(normalized.fuzz) as RequirementCoverageExpectation['fuzz'];
+	return normalized;
+}
+
+function normalizeRequirementTrace(value: RequirementTrace | undefined): RequirementTrace | undefined {
+	if (!isPlainObject(value)) {
+		return undefined;
+	}
+
+	const normalized = cloneSpecificationDocument(value as RequirementTrace);
+	normalized.satisfied_by = normalizeOptionalStringArray(normalized.satisfied_by);
+	normalized.implemented_by = normalizeOptionalStringArray(normalized.implemented_by);
+	normalized.verified_by = normalizeOptionalStringArray(normalized.verified_by);
+	normalized.derived_from = normalizeOptionalStringArray(normalized.derived_from);
+	normalized.supersedes = normalizeOptionalStringArray(normalized.supersedes);
+	normalized.upstream_refs = normalizeOptionalStringArray(normalized.upstream_refs);
+	normalized.related = normalizeOptionalStringArray(normalized.related);
+	return normalized;
 }
 
 function stringValue(value: unknown): string {
@@ -3103,7 +3198,7 @@ function setPropertyValue(path: string, value: string): void {
 
 function setRequirementField(
 	requirement: SpecificationRequirement,
-	fieldName: 'id' | 'title' | 'statement' | 'coverage' | 'trace' | 'notes',
+	fieldName: 'id' | 'title' | 'statement',
 	value: string
 ): void {
 	switch (fieldName) {
@@ -3112,24 +3207,13 @@ function setRequirementField(
 		case 'statement':
 			requirement[fieldName] = value;
 			return;
-		case 'coverage':
-		case 'trace':
-		case 'notes':
-			requirement[fieldName] = value.length === 0 ? [] : [value];
-			return;
 		default:
 			requirement[fieldName] = value;
 	}
 }
 
-function getRequirementArray(requirement: SpecificationRequirement, fieldName: 'coverage' | 'trace' | 'notes'): string[] {
+function getRequirementArray(requirement: SpecificationRequirement, fieldName: 'notes'): string[] {
 	switch (fieldName) {
-		case 'coverage':
-			requirement.coverage = requirement.coverage ?? [];
-			return requirement.coverage;
-		case 'trace':
-			requirement.trace = requirement.trace ?? [];
-			return requirement.trace;
 		case 'notes':
 			requirement.notes = requirement.notes ?? [];
 			return requirement.notes;
