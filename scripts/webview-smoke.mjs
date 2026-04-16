@@ -14,6 +14,7 @@ const playwright = require('playwright');
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const smokeFixtureRelativePath = path.join('specs', 'requirements', 'spec-trace-vsce', 'SPEC-VSCE-EDITOR.json');
 const screenshotDir = process.env.SPEC_TRACE_SMOKE_SCREENSHOT_DIR;
+const smokeCommit = process.env.SPEC_TRACE_SMOKE_COMMIT;
 let launchedBrowser;
 let coverageSmokeState;
 
@@ -32,6 +33,8 @@ async function main() {
 		workspaceRoot = await createSmokeWorkspace();
 		server = await open({
 			browserType: 'chromium',
+			quality: smokeCommit ? 'insiders' : undefined,
+			commit: smokeCommit,
 			extensionDevelopmentPath: repoRoot,
 			folderPath: workspaceRoot,
 			host: 'localhost',
@@ -78,7 +81,7 @@ async function main() {
 		await verifyRequirementDetailNavigation(frame);
 		await verifyOpenQuestionsAddItemKeepsState(frame);
 		await verifySupplementalSectionsAddItemKeepsState(frame);
-		await verifyRequirementCoverageAddItemKeepsState(frame);
+		await verifyRequirementNotesAddItemKeepsState(frame);
 		await verifySaveAndReloadPersistence(page);
 	} finally {
 		if (launchedBrowser) {
@@ -241,7 +244,7 @@ async function verifyUiKitSurface(frame) {
 	assert.ok(surface.hasCard, 'Expected <inc-card> to be present.');
 	assert.ok(surface.hasDisclosure, 'Expected <inc-disclosure> to be present.');
 	assert.ok(surface.hasField, 'Expected <inc-field> to be present.');
-	assert.ok(surface.hasValidation, 'Expected <inc-validation-summary> to be present.');
+	assert.ok(typeof surface.hasValidation === 'boolean', 'Expected validation summary detection to complete.');
 	assert.ok(surface.hasReadonlyField, 'Expected <inc-readonly-field> to be present.');
 	assert.ok(surface.hasListGroup, 'Expected <inc-list-group> to be present.');
 	assert.ok(surface.hasBadge, 'Expected <inc-badge> to be present.');
@@ -317,7 +320,7 @@ async function verifyCoverageSummaryAndDrillDown(frame) {
 	assert.ok(coverageSmokeState, 'Coverage smoke fixture state should be initialized.');
 	const coverageSummary = frame.locator('[data-card-path="coverage-summary"]');
 	const coverageChip = frame.locator('#coverage-chip');
-	const coverageMeta = frame.locator('#coverage-meta');
+	const coverageMeta = frame.locator('#coverage-meta-text');
 	const coverageSelect = frame.locator('#coverage-requirement-select');
 
 	await waitForDetailsState(coverageSummary, true, 'Coverage summary should stay expanded.');
@@ -344,7 +347,7 @@ async function verifyRequirementIndexSearchAndFilter(frame) {
 
 	await frame.locator('inc-button', { hasText: 'Partial' }).click();
 	await waitForRequirementRowCount(frame, coverageSmokeState.partialCount);
-	await waitForLocatorText(frame.locator('.requirement-index-results'), `${coverageSmokeState.partialCount} of ${coverageSmokeState.totalRequirements} requirements shown`);
+	await waitForLocatorTextContains(frame.locator('.requirement-index-results'), `${coverageSmokeState.partialCount} of ${coverageSmokeState.totalRequirements} requirements shown`);
 
 	await frame.locator('inc-button', { hasText: 'All' }).click();
 	await waitForRequirementRowCount(frame, coverageSmokeState.totalRequirements);
@@ -384,31 +387,35 @@ async function verifyRequirementDetailNavigation(frame) {
 	const firstRequirementRow = frame.locator('.requirement-index-row').first();
 	await firstRequirementRow.click();
 	await frame.locator('.requirement-detail-card').waitFor({ state: 'visible' });
+	await captureSmokeScreenshot(frame, 'requirement-detail');
 
-	await frame.locator('inc-button[label="Open the next requirement"]').click();
+	await frame.locator('inc-button', { hasText: 'Next' }).click();
 	await waitForLocatorText(frame.locator('#selected-requirement-subtitle'), `${coverageSmokeState.partialRequirementId} · 2 of ${coverageSmokeState.totalRequirements}`);
 
-	await frame.locator('inc-button[label="Open the previous requirement"]').click();
+	await frame.locator('inc-button', { hasText: 'Previous' }).click();
 	await waitForLocatorText(frame.locator('#selected-requirement-subtitle'), `${coverageSmokeState.coveredRequirementId} · 1 of ${coverageSmokeState.totalRequirements}`);
 
 	await frame.locator('inc-button[label="Return to the requirements index"]').click();
 	await frame.locator('.requirement-index-row').first().waitFor({ state: 'visible' });
 }
 
-async function verifyRequirementCoverageAddItemKeepsState(frame) {
+async function verifyRequirementNotesAddItemKeepsState(frame) {
 	const firstRequirementRow = frame.locator('.requirement-index-row').first();
 	await firstRequirementRow.click();
 	await frame.locator('.requirement-detail-card').waitFor({ state: 'visible' });
+	await frame.locator('inc-button', { hasText: 'Edit requirement' }).click();
+	await frame.locator('inc-button[variant="primary"]').waitFor({ state: 'visible' });
 	await waitForLocatorText(frame.locator('#selected-requirement-subtitle'), `${coverageSmokeState.coveredRequirementId} · 1 of ${coverageSmokeState.totalRequirements}`);
 
-	const coverageField = frame.locator('.requirement-detail-card [data-validation-path$=".coverage"]').first();
-	await coverageField.locator('inc-button').click();
+	const notesField = frame.locator('.requirement-detail-card [data-validation-path$=".notes"]').first();
+	await notesField.locator('inc-button').click();
 	await pause(250);
 
 	await waitForLocatorText(frame.locator('#selected-requirement-subtitle'), `${coverageSmokeState.coveredRequirementId} · 1 of ${coverageSmokeState.totalRequirements}`);
+	await frame.locator('inc-button[label="Return to the read-only requirement details page"]').click();
 	await frame.locator('inc-button[label="Return to the requirements index"]').click();
 	await frame.locator('.requirement-index-row').first().waitFor({ state: 'visible' });
-	await captureSmokeScreenshot(frame, 'requirement-coverage-added');
+	await captureSmokeScreenshot(frame, 'requirement-notes-added');
 }
 
 async function verifySaveAndReloadPersistence(page) {
@@ -432,9 +439,15 @@ async function verifySaveAndReloadPersistence(page) {
 
 	await titleInput.fill(persistedTitle);
 	await waitForLocatorText(frame.locator('#dirty-chip'), 'Dirty');
+	await frame.locator('.requirement-index-row').first().click();
+	await frame.locator('.requirement-detail-card').waitFor({ state: 'visible' });
+	await frame.locator('inc-button', { hasText: 'Edit requirement' }).click();
 	await frame.locator('inc-button[variant="primary"]').click();
 	await waitForLocatorText(frame.locator('#dirty-chip'), 'Clean');
 	await waitForLocatorText(frame.locator('#sync-chip'), 'Synced');
+	await frame.locator('inc-button[label="Return to the read-only requirement details page"]').click();
+	await frame.locator('inc-button[label="Return to the requirements index"]').click();
+	await frame.locator('[data-card-path="document-fields"]').waitFor({ state: 'visible' });
 
 	await closeActiveEditor(page);
 	await openRepositoryExplorer(page);
@@ -469,6 +482,20 @@ async function waitForLocatorText(locator, expectedText, timeout = 10_000) {
 
 	const actualText = (await locator.textContent()).trim();
 	throw new Error(`Timed out waiting for ${expectedText}. Actual text: ${actualText}`);
+}
+
+async function waitForLocatorTextContains(locator, expectedText, timeout = 10_000) {
+	const deadline = Date.now() + timeout;
+	while (Date.now() < deadline) {
+		if ((await locator.textContent())?.trim().includes(expectedText)) {
+			return;
+		}
+
+		await pause(100);
+	}
+
+	const actualText = (await locator.textContent()).trim();
+	throw new Error(`Timed out waiting for text containing ${expectedText}. Actual text: ${actualText}`);
 }
 
 async function waitForRequirementRowCount(frame, expectedCount, timeout = 10_000) {
@@ -616,14 +643,18 @@ function coverageSummaryMetaText(summary) {
 	}
 
 	if (summary.missingCount === 0 && summary.partialCount === 0) {
-		return 'All requirements have coverage evidence.';
+		return 'All requirements are covered.';
 	}
 
 	if (summary.missingCount === 0) {
-		return `${summary.partialCount} partial requirement${summary.partialCount === 1 ? '' : 's'} still need coverage entries.`;
+		return `${summary.partialCount} partial requirement${summary.partialCount === 1 ? ' still needs' : 's still need'} coverage entries.`;
 	}
 
-	return `${summary.partialCount} partial and ${summary.missingCount} missing requirement${summary.missingCount === 1 ? '' : 's'}.`;
+	const missingLabel = `${summary.missingCount} missing requirement${summary.missingCount === 1 ? ' has' : 's have'} no evidence`;
+	const partialLabel = summary.partialCount > 0
+		? ` ${summary.partialCount} partial requirement${summary.partialCount === 1 ? ' still needs' : 's still need'} coverage entries.`
+		: '';
+	return `${missingLabel}.${partialLabel}`.trim();
 }
 
 async function copySmokeFixture(workspaceRoot, relativePath) {

@@ -48,6 +48,10 @@ interface SpecificationEditorWebviewState {
 	requirementsViewMode?: RequirementViewMode;
 	requirementSearchQuery?: string;
 	requirementIndexFilter?: RequirementIndexFilter;
+	requirementSortKey?: RequirementSortKey;
+	requirementSortDirection?: RequirementSortDirection;
+	requirementCompactRows?: boolean;
+	expandedRequirementRowPaths?: string[];
 }
 
 declare function acquireVsCodeApi(): VsCodeApi;
@@ -73,11 +77,17 @@ let coverageRequirementSelectionKey = '';
 let currentRequirementViewMode: RequirementViewMode = 'index';
 let requirementSearchQuery = '';
 let requirementIndexFilter: RequirementIndexFilter = 'all';
+let requirementSortKey: RequirementSortKey = 'file';
+let requirementSortDirection: RequirementSortDirection = 'asc';
+let requirementCompactRows = true;
+let expandedRequirementRowPaths = new Set<string>();
 
 const statusOptions = ['draft', 'review', 'approved', 'active', 'deprecated', 'archived'];
 type TopLevelListField = 'tags' | 'related_artifacts' | 'open_questions' | 'supplemental_sections';
-type RequirementViewMode = 'index' | 'detail';
+type RequirementViewMode = 'index' | 'view' | 'edit';
 type RequirementIndexFilter = 'all' | 'issues' | 'missing' | 'partial' | 'covered';
+type RequirementSortKey = 'file' | 'id' | 'title';
+type RequirementSortDirection = 'asc' | 'desc';
 const requirementIndexFilters: RequirementIndexFilter[] = ['all', 'issues', 'missing', 'partial', 'covered'];
 
 interface CoverageSelection {
@@ -126,6 +136,10 @@ if (persistedState?.document) {
 	currentRequirementViewMode = persistedState.requirementsViewMode ?? 'index';
 	requirementSearchQuery = persistedState.requirementSearchQuery ?? '';
 	requirementIndexFilter = persistedState.requirementIndexFilter ?? 'all';
+	requirementSortKey = persistedState.requirementSortKey ?? 'file';
+	requirementSortDirection = persistedState.requirementSortDirection ?? 'asc';
+	requirementCompactRows = persistedState.requirementCompactRows ?? true;
+	expandedRequirementRowPaths = new Set(persistedState.expandedRequirementRowPaths ?? []);
 	ensureRequirementIndexState();
 	renderEditor();
 	refreshChrome();
@@ -156,12 +170,25 @@ function renderLoading(): void {
 }
 
 function shouldRenderRequirementDetail(): boolean {
-	return currentRequirementViewMode === 'detail' && (currentDocument?.requirements?.length ?? 0) > 0;
+	return currentRequirementViewMode !== 'index' && (currentDocument?.requirements?.length ?? 0) > 0;
+}
+
+function shouldRenderRequirementEdit(): boolean {
+	return currentRequirementViewMode === 'edit';
+}
+
+function shouldRenderRequirementView(): boolean {
+	return currentRequirementViewMode === 'view';
 }
 
 function ensureRequirementViewMode(): void {
 	if ((currentDocument?.requirements?.length ?? 0) === 0) {
 		currentRequirementViewMode = 'index';
+		return;
+	}
+
+	if (!['index', 'view', 'edit'].includes(currentRequirementViewMode)) {
+		currentRequirementViewMode = 'view';
 	}
 }
 
@@ -173,9 +200,34 @@ function ensureRequirementIndexState(): void {
 	if (typeof requirementSearchQuery !== 'string') {
 		requirementSearchQuery = '';
 	}
+
+	if (!['file', 'id', 'title'].includes(requirementSortKey)) {
+		requirementSortKey = 'file';
+	}
+
+	if (!['asc', 'desc'].includes(requirementSortDirection)) {
+		requirementSortDirection = 'asc';
+	}
+
+	if (typeof requirementCompactRows !== 'boolean') {
+		requirementCompactRows = true;
+	}
 }
 
-function openRequirementEditorByIndex(index: number): void {
+function addRequirementAndOpenEditor(): void {
+	ensureEditableDocument();
+	currentDocument!.requirements = currentDocument!.requirements ?? [];
+	pendingOpenRequirementIndex = currentDocument!.requirements.length;
+	currentDocument!.requirements.push(createEmptyRequirement());
+	setCoverageRequirementSelectionKey(`index:${pendingOpenRequirementIndex}`);
+	currentRequirementViewMode = 'edit';
+	commitCurrentDocument(true);
+	renderEditor();
+	refreshChrome();
+	renderValidationState();
+}
+
+function openRequirementByIndex(index: number, mode: Exclude<RequirementViewMode, 'index'> = 'view'): void {
 	if (!currentDocument) {
 		return;
 	}
@@ -186,12 +238,38 @@ function openRequirementEditorByIndex(index: number): void {
 	}
 
 	setCoverageRequirementSelectionKey(coverageSelectionKeyForRequirement(requirement, index));
-	currentRequirementViewMode = 'detail';
+	currentRequirementViewMode = mode;
 	persistWebviewState();
+}
+
+function openRequirementViewByIndex(index: number): void {
+	openRequirementByIndex(index, 'view');
+}
+
+function openRequirementEditorByIndex(index: number): void {
+	openRequirementByIndex(index, 'edit');
 }
 
 function returnToRequirementIndex(): void {
 	currentRequirementViewMode = 'index';
+	persistWebviewState();
+}
+
+function startEditingSelectedRequirement(): void {
+	if (!currentDocument?.requirements?.length) {
+		return;
+	}
+
+	currentRequirementViewMode = 'edit';
+	persistWebviewState();
+}
+
+function returnToRequirementView(): void {
+	if (!currentDocument?.requirements?.length) {
+		currentRequirementViewMode = 'index';
+	} else {
+		currentRequirementViewMode = 'view';
+	}
 	persistWebviewState();
 }
 
@@ -202,6 +280,34 @@ function setRequirementSearchQuery(query: string): void {
 
 function setRequirementIndexFilter(filter: RequirementIndexFilter): void {
 	requirementIndexFilter = filter;
+	persistWebviewState();
+}
+
+function setRequirementSortKey(sortKey: RequirementSortKey): void {
+	requirementSortKey = sortKey;
+	persistWebviewState();
+}
+
+function toggleRequirementSortDirection(): void {
+	requirementSortDirection = requirementSortDirection === 'asc' ? 'desc' : 'asc';
+	persistWebviewState();
+}
+
+function toggleRequirementCompactRows(): void {
+	requirementCompactRows = !requirementCompactRows;
+	persistWebviewState();
+}
+
+function isRequirementRowExpanded(path: string): boolean {
+	return expandedRequirementRowPaths.has(path);
+}
+
+function toggleRequirementRowExpanded(path: string): void {
+	if (expandedRequirementRowPaths.has(path)) {
+		expandedRequirementRowPaths.delete(path);
+	} else {
+		expandedRequirementRowPaths.add(path);
+	}
 	persistWebviewState();
 }
 
@@ -216,7 +322,7 @@ function navigateRequirementByOffset(offset: number): void {
 		return;
 	}
 
-	openRequirementEditorByIndex(nextIndex);
+	openRequirementByIndex(nextIndex, shouldRenderRequirementEdit() ? 'edit' : 'view');
 	renderEditor();
 	refreshChrome();
 	renderValidationState();
@@ -239,7 +345,10 @@ function renderEditor(): void {
 	const body = document.createElement('div');
 	body.slot = 'body';
 	body.className = 'editor-root';
-	body.append(createValidationSummaryCard(), createRequirementsCard(autoOpenRequirementIndex));
+	if (currentIssues.length > 0) {
+		body.append(createValidationSummaryCard());
+	}
+	body.append(createRequirementsCard(autoOpenRequirementIndex));
 
 	if (!shouldRenderRequirementDetail()) {
 		body.append(
@@ -328,25 +437,17 @@ function createHero(): HTMLElement {
 	const actionsSlot = document.createElement('inc-button-toolbar');
 	actionsSlot.slot = 'actions';
 	actionsSlot.className = 'hero-actions';
+	if (shouldRenderRequirementEdit()) {
+		actionsSlot.append(
+			createActionButton('Save', 'Save the current specification', () => {
+				void vscode.postMessage({ type: 'save' });
+			}, { variant: 'primary' })
+		);
+	}
 	actionsSlot.append(
-		createActionButton('Save', 'Save the current specification', () => {
-			void vscode.postMessage({ type: 'save' });
-		}, { variant: 'primary' }),
 		createActionButton('Open JSON', 'Open the same file in the text editor', () => {
 			void vscode.postMessage({ type: 'openText' });
-		}, { variant: 'outline-secondary' }),
-		createActionButton('Add requirement', 'Add a new requirement record', () => {
-			ensureEditableDocument();
-			currentDocument!.requirements = currentDocument!.requirements ?? [];
-			pendingOpenRequirementIndex = currentDocument!.requirements.length;
-			currentDocument!.requirements.push(createEmptyRequirement());
-			setCoverageRequirementSelectionKey(`index:${pendingOpenRequirementIndex}`);
-			currentRequirementViewMode = 'detail';
-			commitCurrentDocument(true);
-			renderEditor();
-			refreshChrome();
-			renderValidationState();
-		}, { variant: 'secondary' })
+		}, { variant: 'outline-secondary' })
 	);
 
 	header.append(titleSlot, bodySlot, actionsSlot);
@@ -379,6 +480,35 @@ function createBadge(label: string, tone: 'primary' | 'secondary' | 'success' | 
 	return badge;
 }
 
+function createInfoHint(helpText: string, label = 'More information'): HTMLElement {
+	const hint = document.createElement('span');
+	hint.className = 'info-hint';
+	hint.tabIndex = 0;
+	hint.title = helpText;
+	hint.setAttribute('aria-label', `${label}. ${helpText}`);
+	hint.textContent = 'i';
+	return hint;
+}
+
+function getCoverageStatusExplanation(status: ReturnType<typeof summarizeRequirementCoverage>['status']): string {
+	switch (status) {
+		case 'covered':
+			return 'Covered requirements have one or more coverage entries.';
+		case 'partial':
+			return 'Partial requirements have trace or notes evidence, but no coverage entries yet.';
+		case 'missing':
+			return 'Missing requirements have no coverage, trace, or notes evidence yet.';
+	}
+}
+
+function getCoverageDefinitionsHelpText(): string {
+	return [
+		getCoverageStatusExplanation('covered'),
+		getCoverageStatusExplanation('partial'),
+		getCoverageStatusExplanation('missing')
+	].join(' ');
+}
+
 function createHeroStatusStrip(): HTMLElement {
 	const strip = document.createElement('div');
 	strip.className = 'hero-status-strip';
@@ -394,9 +524,11 @@ function createHeroStatusStrip(): HTMLElement {
 	);
 
 	const meta = document.createElement('div');
-	meta.id = 'coverage-meta';
 	meta.className = 'inc-text inc-text--small inc-text--muted hero-status-strip__meta';
-	meta.textContent = 'Add requirements to start tracking coverage.';
+	const metaText = document.createElement('span');
+	metaText.id = 'coverage-meta-text';
+	metaText.textContent = 'Add requirements to start tracking coverage.';
+	meta.append(metaText, createInfoHint(getCoverageDefinitionsHelpText(), 'Coverage definitions'));
 
 	strip.append(chips, meta);
 	return strip;
@@ -405,16 +537,24 @@ function createHeroStatusStrip(): HTMLElement {
 function createCoverageSummaryChip(): HTMLElement {
 	const badge = createBadge('No requirements', 'info', 'status-chip');
 	badge.id = 'coverage-chip';
+	badge.title = getCoverageDefinitionsHelpText();
+	badge.setAttribute('aria-label', `Coverage summary. ${getCoverageDefinitionsHelpText()}`);
 	return badge;
 }
 
-function createSummaryBlock(title: string, body: HTMLElement): HTMLElement {
+function createSummaryBlock(title: string, body: HTMLElement, infoTitle?: string): HTMLElement {
 	const block = document.createElement('inc-summary-block');
 	block.setAttribute('tone', 'info');
 
 	const header = document.createElement('div');
 	header.slot = 'header';
-	header.textContent = title;
+	header.className = 'summary-block__header';
+	const titleText = document.createElement('span');
+	titleText.textContent = title;
+	header.append(titleText);
+	if (infoTitle) {
+		header.append(createInfoHint(infoTitle, `${title} definition`));
+	}
 
 	const bodySlot = document.createElement('div');
 	bodySlot.slot = 'body';
@@ -453,9 +593,9 @@ function createCoverageOverview(summary: ReturnType<typeof summarizeSpecificatio
 
 	overview.append(
 		createSummaryBlock('Total', createCoverageMetric(String(summary.totalRequirements), 'requirements', 'info')),
-		createSummaryBlock('Covered', createCoverageMetric(String(summary.coveredCount), 'requirements', 'success')),
-		createSummaryBlock('Partial', createCoverageMetric(String(summary.partialCount), 'requirements', 'warning')),
-		createSummaryBlock('Missing', createCoverageMetric(String(summary.missingCount), 'requirements', 'danger'))
+		createSummaryBlock('Covered', createCoverageMetric(String(summary.coveredCount), 'requirements', 'success'), getCoverageStatusExplanation('covered')),
+		createSummaryBlock('Partial', createCoverageMetric(String(summary.partialCount), 'requirements', 'warning'), getCoverageStatusExplanation('partial')),
+		createSummaryBlock('Missing', createCoverageMetric(String(summary.missingCount), 'requirements', 'danger'), getCoverageStatusExplanation('missing'))
 	);
 
 	return overview;
@@ -988,40 +1128,35 @@ function createRequirementsCard(autoOpenRequirementIndex: number | undefined): H
 
 	const header = document.createElement('div');
 	header.slot = 'header';
-	header.append(
-		createSectionHeading(
-			'Requirements',
-			shouldRenderRequirementDetail()
-				? 'Focused requirement editing with the rest of the document chrome out of the way.'
-				: 'Scan the full requirement set in one dense list, then open a requirement into its own editing screen.'
-		)
-	);
+	if (shouldRenderRequirementDetail()) {
+		header.append(
+			createSectionHeading(
+				'Requirements',
+				shouldRenderRequirementEdit()
+					? 'Requirement editing with the rest of the document chrome out of the way.'
+					: 'Read-only requirement details with a separate step for editing.'
+			)
+		);
+	}
 
 	const actions = createButtonToolbar('Requirement actions', 'section-actions');
 	actions.slot = 'actions';
 	if (shouldRenderRequirementDetail()) {
+		const backLabel = shouldRenderRequirementEdit() ? 'Back to details' : 'Back to requirements';
+		const backTitle = shouldRenderRequirementEdit()
+			? 'Return to the read-only requirement details page'
+			: 'Return to the requirements index';
 		actions.append(
-			createActionButton('Back to requirements', 'Return to the requirements index', () => {
-				returnToRequirementIndex();
+			createActionButton(backLabel, backTitle, () => {
+				if (shouldRenderRequirementEdit()) {
+					returnToRequirementView();
+				} else {
+					returnToRequirementIndex();
+				}
 				renderEditor();
 				refreshChrome();
 				renderValidationState();
 			}, { variant: 'outline-secondary' })
-		);
-	} else {
-		actions.append(
-			createActionButton('Add requirement', 'Add a new requirement record', () => {
-				ensureEditableDocument();
-				currentDocument!.requirements = currentDocument!.requirements ?? [];
-				pendingOpenRequirementIndex = currentDocument!.requirements.length;
-				currentDocument!.requirements.push(createEmptyRequirement());
-				setCoverageRequirementSelectionKey(`index:${pendingOpenRequirementIndex}`);
-				currentRequirementViewMode = 'detail';
-				commitCurrentDocument(true);
-				renderEditor();
-				refreshChrome();
-				renderValidationState();
-			}, { variant: 'secondary' })
 		);
 	}
 
@@ -1032,13 +1167,19 @@ function createRequirementsCard(autoOpenRequirementIndex: number | undefined): H
 	const requirements = currentDocument?.requirements ?? [];
 	const selection = resolveCoverageRequirementSelection(requirements);
 
-	if (shouldRenderRequirementDetail()) {
-		body.append(createRequirementDetailCard(requirements, selection), createErrorRegion());
+	if (shouldRenderRequirementEdit()) {
+		body.append(createRequirementEditCard(requirements, selection), createErrorRegion());
+	} else if (shouldRenderRequirementView()) {
+		body.append(createRequirementViewCard(requirements, selection), createErrorRegion());
 	} else {
 		body.append(createRequirementsIndexCard(requirements, selection), createErrorRegion());
 	}
 
-	section.append(header, actions, body);
+	if (shouldRenderRequirementDetail()) {
+		section.append(header, actions, body);
+	} else {
+		section.append(body);
+	}
 	return section;
 }
 
@@ -1051,12 +1192,20 @@ function createRequirementsIndexCard(
 
 	const header = document.createElement('div');
 	header.slot = 'header';
+	header.className = 'card-header-row';
 	header.append(
 		createSectionHeading(
 			'Requirement index',
 			requirements.length === 0
 				? 'Add a requirement to start building the specification.'
-				: `${requirements.length} requirement${requirements.length === 1 ? '' : 's'} in file order. Open one when you need to edit it.`
+				: `${requirements.length} requirement${requirements.length === 1 ? '' : 's'} ready to scan. Open one when you need to edit it.`,
+			getCoverageDefinitionsHelpText()
+		),
+		createCardHeaderActions(
+			'Requirement index actions',
+			createActionButton('Add requirement', 'Add a new requirement record', () => {
+				addRequirementAndOpenEditor();
+			}, { variant: 'secondary', size: 'sm' })
 		)
 	);
 
@@ -1071,7 +1220,7 @@ function createRequirementsIndexCard(
 	}
 
 	const entries = createRequirementIndexEntries(requirements);
-	const visibleEntries = filterRequirementIndexEntries(entries);
+	const visibleEntries = getVisibleRequirementIndexEntries(entries);
 	body.append(createRequirementIndexToolbar(entries.length, visibleEntries.length));
 
 	if (visibleEntries.length === 0) {
@@ -1128,34 +1277,128 @@ function filterRequirementIndexEntries(entries: RequirementIndexEntry[]): Requir
 	});
 }
 
-function createRequirementIndexToolbar(totalCount: number, visibleCount: number): HTMLElement {
-	const toolbar = document.createElement('div');
-	toolbar.className = 'requirement-index-toolbar';
+function getVisibleRequirementIndexEntries(entries: RequirementIndexEntry[]): RequirementIndexEntry[] {
+	return filterRequirementIndexEntries(entries).sort(compareRequirementIndexEntries);
+}
 
-	const searchField = document.createElement('inc-field');
-	searchField.className = 'requirement-index-search-field';
-	searchField.setAttribute('dense', '');
+function compareRequirementIndexEntries(left: RequirementIndexEntry, right: RequirementIndexEntry): number {
+	let result = 0;
+	if (requirementSortKey === 'file') {
+		result = left.index - right.index;
+	} else if (requirementSortKey === 'id') {
+		result = compareRequirementIndexText(getRequirementIdLabel(left), getRequirementIdLabel(right));
+	} else {
+		result = compareRequirementIndexText(getRequirementTitleLabel(left), getRequirementTitleLabel(right));
+	}
 
-	const searchLabel = document.createElement('div');
-	searchLabel.slot = 'label';
-	searchLabel.className = 'inc-form__label';
-	searchLabel.textContent = 'Find requirement';
+	if (result === 0) {
+		result = left.index - right.index;
+	}
 
-	const searchControl = document.createElement('div');
-	searchControl.slot = 'control';
-	searchControl.className = 'requirement-index-search-control';
+	return requirementSortDirection === 'asc' ? result : -result;
+}
 
-	const searchInput = document.createElement('input');
-	searchInput.id = 'requirement-search-input';
-	searchInput.type = 'search';
-	searchInput.className = 'inc-form__control requirement-index-search-input';
-	searchInput.placeholder = 'Search id, title, or statement';
-	searchInput.value = requirementSearchQuery;
-	searchInput.setAttribute('aria-label', 'Search requirements');
-	searchInput.addEventListener('input', () => {
-		const selectionStart = searchInput.selectionStart ?? searchInput.value.length;
-		const selectionEnd = searchInput.selectionEnd ?? selectionStart;
-		setRequirementSearchQuery(searchInput.value);
+function compareRequirementIndexText(left: string, right: string): number {
+	return left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+function getRequirementIdLabel(entry: RequirementIndexEntry): string {
+	return stringValue(entry.requirement.id).trim() || `Requirement ${entry.index + 1}`;
+}
+
+function getRequirementTitleLabel(entry: RequirementIndexEntry): string {
+	return stringValue(entry.requirement.title).trim() || 'Untitled requirement';
+}
+
+function getRequirementSortKeyLabel(sortKey: RequirementSortKey): string {
+	switch (sortKey) {
+		case 'id':
+			return 'ID';
+		case 'title':
+			return 'Title';
+		default:
+			return 'File order';
+	}
+}
+
+function getRequirementSortDirectionLabel(direction: RequirementSortDirection): string {
+	return direction === 'asc' ? 'Ascending' : 'Descending';
+}
+
+function getRequirementSortDirectionButtonLabel(direction: RequirementSortDirection): string {
+	return direction === 'asc' ? 'Asc' : 'Desc';
+}
+
+function createToolbarLabel(text: string, infoTitle?: string): HTMLElement {
+	const label = document.createElement('div');
+	label.className = 'requirement-toolbar-label inc-text inc-text--small inc-text--muted';
+
+	const labelText = document.createElement('span');
+	labelText.textContent = text;
+	label.append(labelText);
+
+	if (infoTitle) {
+		label.append(createInfoHint(infoTitle, `${text} help`));
+	}
+
+	return label;
+}
+
+function createRequirementToolbarPanel(title: string, helpText: string, ...children: HTMLElement[]): HTMLElement {
+	const panel = document.createElement('div');
+	panel.className = 'requirement-toolbar-panel';
+
+	const header = document.createElement('div');
+	header.className = 'requirement-toolbar-panel__header';
+	header.append(createToolbarLabel(title, helpText));
+
+	const body = document.createElement('div');
+	body.className = 'requirement-toolbar-panel__body';
+	body.append(...children);
+
+	panel.append(header, body);
+	return panel;
+}
+
+function createTriangleIcon(direction: 'right' | 'down' | 'up'): SVGSVGElement {
+	const namespace = 'http://www.w3.org/2000/svg';
+	const svg = document.createElementNS(namespace, 'svg');
+	svg.setAttribute('viewBox', '0 0 12 12');
+	svg.setAttribute('aria-hidden', 'true');
+	svg.classList.add('inline-triangle-icon', `inline-triangle-icon--${direction}`);
+
+	const path = document.createElementNS(namespace, 'path');
+	if (direction === 'right') {
+		path.setAttribute('d', 'M4 2.5 8.5 6 4 9.5Z');
+	} else if (direction === 'down') {
+		path.setAttribute('d', 'M2.5 4 6 8.5 9.5 4Z');
+	} else {
+		path.setAttribute('d', 'M2.5 8 6 3.5 9.5 8Z');
+	}
+	path.setAttribute('fill', 'currentColor');
+	svg.append(path);
+	return svg;
+}
+
+function applyTriangleLabel(button: HTMLElement, direction: 'up' | 'down', text: string): void {
+	const label = document.createElement('span');
+	label.className = 'triangle-button-label';
+	label.textContent = text;
+	button.replaceChildren(createTriangleIcon(direction), label);
+}
+
+function createRequirementSearchControl(): HTMLElement {
+	const input = document.createElement('input');
+	input.id = 'requirement-search-input';
+	input.type = 'search';
+	input.className = 'inc-form__control requirement-index-search-input';
+	input.placeholder = 'Search id, title, or statement';
+	input.value = requirementSearchQuery;
+	input.setAttribute('aria-label', 'Search requirements');
+	input.addEventListener('input', () => {
+		const selectionStart = input.selectionStart ?? input.value.length;
+		const selectionEnd = input.selectionEnd ?? selectionStart;
+		setRequirementSearchQuery(input.value);
 		renderEditor();
 		refreshChrome();
 		renderValidationState();
@@ -1170,21 +1413,138 @@ function createRequirementIndexToolbar(totalCount: number, visibleCount: number)
 		}, 0);
 	});
 
-	searchControl.append(searchInput);
-	searchField.append(searchLabel, searchControl);
+	return input;
+}
+
+function createRequirementSortSelect(): HTMLSelectElement {
+	const select = document.createElement('select');
+	select.className = 'inc-form__select requirement-index-sort-select';
+	select.setAttribute('aria-label', 'Sort requirements by');
+
+	[
+		{ value: 'file', label: 'File order' },
+		{ value: 'id', label: 'Requirement ID' },
+		{ value: 'title', label: 'Title' }
+	].forEach((option) => {
+		const optionNode = document.createElement('option');
+		optionNode.value = option.value;
+		optionNode.textContent = option.label;
+		select.append(optionNode);
+	});
+
+	select.value = requirementSortKey;
+	select.addEventListener('change', () => {
+		setRequirementSortKey(select.value as RequirementSortKey);
+		renderEditor();
+		refreshChrome();
+		renderValidationState();
+	});
+
+	return select;
+}
+
+function createCompactRowsSwitch(): HTMLElement {
+	const wrapper = document.createElement('div');
+	wrapper.className = 'requirement-density-switch';
+
+	const choice = document.createElement('div');
+	choice.className = 'inc-form__check inc-form__switch requirement-density-switch__choice';
+
+	const input = document.createElement('input');
+	input.id = 'requirement-collapsed-rows';
+	input.type = 'checkbox';
+	input.className = 'inc-form__check-input';
+	input.checked = requirementCompactRows;
+	input.setAttribute('aria-label', 'Toggle collapsed requirement rows');
+	input.addEventListener('change', () => {
+		toggleRequirementCompactRows();
+		renderEditor();
+		refreshChrome();
+		renderValidationState();
+	});
+
+	const label = document.createElement('label');
+	label.className = 'inc-form__check-label';
+	label.htmlFor = input.id;
+	label.textContent = 'Collapsed rows';
+	label.title = requirementCompactRows
+		? 'Collapsed rows are on. Use the chevron to expand a row inline.'
+		: 'Collapsed rows are off. Each row stays fully open.';
+
+	choice.append(input, label);
+	wrapper.append(choice);
+	return wrapper;
+}
+
+function createRequirementIndexToolbar(totalCount: number, visibleCount: number): HTMLElement {
+	const toolbar = document.createElement('div');
+	toolbar.className = 'requirement-index-toolbar';
+
+	const searchControl = createRequirementSearchControl();
 
 	const filters = createButtonGroup('Requirement index filters', 'requirement-index-filter-group');
 	for (const filter of requirementIndexFilters) {
 		filters.append(createRequirementFilterButton(filter));
 	}
 
+	const filterGroup = document.createElement('div');
+	filterGroup.className = 'requirement-toolbar-group';
+	filterGroup.append(
+		createToolbarLabel('Status filters', getCoverageDefinitionsHelpText()),
+		filters
+	);
+
+	const sortControls = document.createElement('div');
+	sortControls.className = 'requirement-index-sort-controls';
+
+	const sortSelect = createRequirementSortSelect();
+
+	const directionLabel = getRequirementSortDirectionLabel(requirementSortDirection);
+	const directionButton = createActionButton(
+		getRequirementSortDirectionButtonLabel(requirementSortDirection),
+		`Sort direction is currently ${directionLabel.toLowerCase()}. Click to toggle.`,
+		() => {
+			toggleRequirementSortDirection();
+			renderEditor();
+			refreshChrome();
+			renderValidationState();
+		},
+		{
+			variant: 'outline-secondary',
+			size: 'sm'
+		}
+	);
+	applyTriangleLabel(directionButton, requirementSortDirection === 'asc' ? 'up' : 'down', getRequirementSortDirectionButtonLabel(requirementSortDirection));
+
+	sortControls.append(directionButton, createCompactRowsSwitch());
+
+	const sortGroup = document.createElement('div');
+	sortGroup.className = 'requirement-toolbar-group';
+	sortGroup.append(
+		createToolbarLabel('Sort by'),
+		sortSelect,
+		sortControls
+	);
+
 	const meta = document.createElement('div');
 	meta.className = 'inc-text inc-text--small inc-text--muted requirement-index-results';
-	meta.textContent = visibleCount === totalCount
+	const countText = visibleCount === totalCount
 		? `${totalCount} requirement${totalCount === 1 ? '' : 's'} shown`
 		: `${visibleCount} of ${totalCount} requirement${totalCount === 1 ? '' : 's'} shown`;
+	meta.textContent = `${countText} · ${getRequirementSortKeyLabel(requirementSortKey)} ${getRequirementSortDirectionLabel(requirementSortDirection).toLowerCase()}`;
 
-	toolbar.append(searchField, filters, meta);
+	const findPanel = createRequirementToolbarPanel(
+		'Find and filter',
+		'Search by requirement ID, title, or statement, then narrow the list by status.',
+		searchControl,
+		filterGroup
+	);
+
+	const sortPanel = document.createElement('div');
+	sortPanel.className = 'requirement-toolbar-panel';
+	sortPanel.append(sortGroup);
+
+	toolbar.append(findPanel, sortPanel, meta);
 	return toolbar;
 }
 
@@ -1197,9 +1557,17 @@ function createRequirementFilterButton(filter: RequirementIndexFilter): HTMLElem
 		covered: 'Covered'
 	};
 
+	const descriptions: Record<RequirementIndexFilter, string> = {
+		all: 'Show every requirement in the file.',
+		issues: 'Show only requirements with validation issues.',
+		missing: getCoverageStatusExplanation('missing'),
+		partial: getCoverageStatusExplanation('partial'),
+		covered: getCoverageStatusExplanation('covered')
+	};
+
 	return createActionButton(
 		labels[filter],
-		`Show ${labels[filter].toLowerCase()} requirements`,
+		descriptions[filter],
 		() => {
 			setRequirementIndexFilter(filter);
 			renderEditor();
@@ -1239,30 +1607,56 @@ function createRequirementIndexRow(
 	selection: CoverageSelection
 ): HTMLElement {
 	const { requirement, index, path, coverageSummary, issueCount } = entry;
-	const button = document.createElement('button');
-	button.type = 'button';
-	button.className = 'inc-list-group__item inc-list-group__item--action requirement-index-row';
-	button.setAttribute('aria-label', `Edit ${stringValue(requirement.id).trim() || `Requirement ${index + 1}`}`);
-	button.dataset.validationPath = path;
-	button.dataset.cardPath = path;
-	button.dataset.requirementRowPath = path;
+	const row = document.createElement('div');
+	row.className = 'inc-list-group__item requirement-index-row';
+	row.dataset.validationPath = path;
+	row.dataset.cardPath = path;
+	row.dataset.requirementRowPath = path;
 	const isSelected = selection.index === index;
 	if (isSelected) {
-		button.classList.add('active');
+		row.classList.add('active');
 	}
 	if (issueCount > 0) {
-		button.classList.add('requirement-index-row--warning');
+		row.classList.add('requirement-index-row--warning');
 	}
+	if (requirementCompactRows) {
+		row.classList.add('requirement-index-row--compact');
+	}
+	if (isRequirementRowExpanded(path)) {
+		row.classList.add('requirement-index-row--expanded');
+	}
+	row.addEventListener('click', (event) => {
+		const target = event.target as HTMLElement | null;
+		if (target?.closest('.requirement-index-expand') || target?.closest('.requirement-index-open-button')) {
+			return;
+		}
 
-	button.addEventListener('click', () => {
-		openRequirementEditorByIndex(index);
+		openRequirementViewByIndex(index);
 		renderEditor();
 		refreshChrome();
 		renderValidationState();
 	});
 
-	const rowHeader = document.createElement('span');
+	const rowHeader = document.createElement('div');
 	rowHeader.className = 'requirement-index-header';
+
+	if (requirementCompactRows) {
+		const toggle = document.createElement('button');
+		toggle.type = 'button';
+		toggle.className = 'inc-btn inc-btn--outline-secondary inc-btn--micro requirement-index-expand';
+		toggle.title = isRequirementRowExpanded(path) ? 'Collapse row' : 'Expand row';
+		toggle.setAttribute('aria-expanded', isRequirementRowExpanded(path) ? 'true' : 'false');
+		toggle.setAttribute('aria-label', `${isRequirementRowExpanded(path) ? 'Collapse' : 'Expand'} ${getRequirementIdLabel(entry)}`);
+		toggle.append(createTriangleIcon(isRequirementRowExpanded(path) ? 'down' : 'right'));
+		toggle.addEventListener('click', (event) => {
+			event.stopPropagation();
+			toggleRequirementRowExpanded(path);
+			renderEditor();
+			refreshChrome();
+			renderValidationState();
+		});
+		rowHeader.append(toggle);
+	}
 
 	const summaryCopy = document.createElement('span');
 	summaryCopy.className = 'requirement-summary-copy';
@@ -1273,18 +1667,20 @@ function createRequirementIndexRow(
 
 	const summaryIdentifier = document.createElement('span');
 	summaryIdentifier.className = 'requirement-summary-id';
-	summaryIdentifier.textContent = stringValue(requirement.id).trim() || `Requirement ${index + 1}`;
+	summaryIdentifier.textContent = getRequirementIdLabel(entry);
 
 	const summaryTitle = document.createElement('span');
 	summaryTitle.className = 'requirement-summary-title';
-	summaryTitle.textContent = stringValue(requirement.title).trim() || 'Untitled requirement';
-
-	const summaryDescription = document.createElement('span');
-	summaryDescription.className = 'requirement-summary-statement';
-	summaryDescription.textContent = stringValue(requirement.statement).trim() || 'Add the requirement statement.';
+	summaryTitle.textContent = getRequirementTitleLabel(entry);
 
 	summaryLine.append(summaryIdentifier, summaryTitle);
-	summaryCopy.append(summaryLine, summaryDescription);
+	summaryCopy.append(summaryLine);
+	if (!requirementCompactRows || isRequirementRowExpanded(path)) {
+		const summaryDescription = document.createElement('span');
+		summaryDescription.className = 'requirement-summary-statement';
+		summaryDescription.textContent = stringValue(requirement.statement).trim() || 'Add the requirement statement.';
+		summaryCopy.append(summaryDescription);
+	}
 
 	const meta = document.createElement('span');
 	meta.className = 'requirement-index-meta';
@@ -1296,6 +1692,8 @@ function createRequirementIndexRow(
 		'requirement-summary-state'
 	);
 	coverageBadge.dataset.coveragePath = path;
+	coverageBadge.title = getCoverageStatusExplanation(coverageSummary.status);
+	coverageBadge.setAttribute('aria-label', `${formatCoverageStatusLabel(coverageSummary.status)}. ${getCoverageStatusExplanation(coverageSummary.status)}`);
 	meta.append(coverageBadge);
 
 	if (issueCount > 0) {
@@ -1303,15 +1701,39 @@ function createRequirementIndexRow(
 		meta.append(issuesBadge);
 	}
 
-	const evidence = document.createElement('span');
-	evidence.className = 'inc-text inc-text--small inc-text--muted requirement-index-evidence';
-	evidence.dataset.requirementEvidencePath = path;
-	evidence.textContent = formatRequirementEvidenceSummary(coverageSummary);
-	meta.append(evidence);
+	if (!requirementCompactRows || isRequirementRowExpanded(path)) {
+		const evidence = document.createElement('span');
+		evidence.className = 'inc-text inc-text--small inc-text--muted requirement-index-evidence';
+		evidence.dataset.requirementEvidencePath = path;
+		evidence.textContent = formatRequirementEvidenceSummary(coverageSummary);
+		meta.append(evidence);
+	}
 
-	rowHeader.append(summaryCopy, meta);
-	button.append(rowHeader);
-	return button;
+	const openButton = document.createElement('button');
+	openButton.type = 'button';
+	openButton.className = 'requirement-index-open';
+	openButton.setAttribute('aria-label', `Open details for ${getRequirementIdLabel(entry)}`);
+	openButton.append(summaryCopy, meta);
+
+	const explicitOpenButton = createActionButton(
+		'Open',
+		`Open details for ${getRequirementIdLabel(entry)}`,
+		() => {
+			openRequirementViewByIndex(index);
+			renderEditor();
+			refreshChrome();
+			renderValidationState();
+		},
+		{ variant: 'outline-secondary', size: 'sm' }
+	);
+	explicitOpenButton.classList.add('requirement-index-open-button');
+	explicitOpenButton.addEventListener('click', (event) => {
+		event.stopPropagation();
+	});
+
+	rowHeader.append(openButton, explicitOpenButton);
+	row.append(rowHeader);
+	return row;
 }
 
 function createRequirementIssueBadge(requirementPath: string, issueCount: number, compact = false): HTMLElement {
@@ -1334,7 +1756,91 @@ function formatRequirementEvidenceSummary(summary: ReturnType<typeof summarizeRe
 	return parts.length > 0 ? parts.join(' · ') : 'No trace or notes yet';
 }
 
-function createRequirementDetailCard(
+function createRequirementViewCard(
+	requirements: SpecificationRequirement[],
+	selection: CoverageSelection
+): HTMLElement {
+	const detail = document.createElement('inc-card');
+	detail.className = 'requirement-detail-card';
+
+	const body = document.createElement('div');
+	body.slot = 'body';
+	body.className = 'requirement-detail-body';
+
+	if (selection.index < 0 || !requirements[selection.index]) {
+		body.append(createCard('Select a requirement', 'Choose a row from the requirement table to inspect its details.'));
+		detail.append(body);
+		return detail;
+	}
+
+	const requirement = requirements[selection.index];
+	const path = `requirements[${selection.index}]`;
+	const coverageSummary = summarizeRequirementCoverage(requirement);
+	const issueCount = countIssuesForPath(path);
+
+	const header = document.createElement('div');
+	header.slot = 'header';
+	header.className = 'requirement-detail-header';
+
+	const titleBlock = document.createElement('div');
+	titleBlock.className = 'requirement-detail-heading';
+
+	const title = document.createElement('h2');
+	title.className = 'inc-heading inc-heading--h5';
+	title.id = 'selected-requirement-title';
+	title.textContent = stringValue(requirement.title).trim() || 'Untitled requirement';
+
+	const subtitle = document.createElement('p');
+	subtitle.className = 'inc-text inc-text--small inc-text--muted requirement-detail-subtitle';
+	subtitle.id = 'selected-requirement-subtitle';
+	subtitle.textContent = `${stringValue(requirement.id).trim() || `Requirement ${selection.index + 1}`} · ${selection.index + 1} of ${requirements.length}`;
+
+	titleBlock.append(title, subtitle);
+
+	const actions = createButtonToolbar('Selected requirement actions', 'requirement-toolbar');
+	actions.append(
+		createActionButton(
+			'Previous',
+			'Open the previous requirement',
+			() => navigateRequirementByOffset(-1),
+			{ variant: 'outline-secondary', size: 'sm', disabled: selection.index === 0 }
+		),
+		createActionButton(
+			'Next',
+			'Open the next requirement',
+			() => navigateRequirementByOffset(1),
+			{ variant: 'outline-secondary', size: 'sm', disabled: selection.index === requirements.length - 1 }
+		),
+		createActionButton(
+			'Edit requirement',
+			'Switch to requirement editing',
+			() => {
+				startEditingSelectedRequirement();
+				renderEditor();
+				refreshChrome();
+				renderValidationState();
+			},
+			{ variant: 'secondary', size: 'sm' }
+		)
+	);
+
+	header.append(titleBlock, actions);
+
+	body.append(
+		createSelectedRequirementOverview(selection.index, requirements.length, coverageSummary, issueCount),
+		createReadonlyRequirementField('Requirement id', stringValue(requirement.id).trim() || '—', 'Canonical requirement identifier.'),
+		createReadonlyRequirementField('Title', stringValue(requirement.title).trim() || 'Untitled requirement'),
+		createReadonlyRequirementField('Statement', stringValue(requirement.statement).trim() || 'No requirement statement recorded.', 'Normative statement text.', true),
+		createRequirementEvidenceViewCard('Coverage', requirement.coverage ?? [], 'No coverage entries recorded yet.'),
+		createRequirementEvidenceViewCard('Trace', requirement.trace ?? [], 'No trace entries recorded yet.'),
+		createRequirementEvidenceViewCard('Notes', requirement.notes ?? [], 'No notes recorded yet.')
+	);
+
+	detail.append(header, body, createErrorRegion());
+	return detail;
+}
+
+function createRequirementEditCard(
 	requirements: SpecificationRequirement[],
 	selection: CoverageSelection
 ): HTMLElement {
@@ -1379,13 +1885,13 @@ function createRequirementDetailCard(
 	actions.append(
 		createActionButton(
 			'Previous',
-			'Open the previous requirement',
+			'Open the previous requirement for editing',
 			() => navigateRequirementByOffset(-1),
 			{ variant: 'outline-secondary', size: 'sm', disabled: selection.index === 0 }
 		),
 		createActionButton(
 			'Next',
-			'Open the next requirement',
+			'Open the next requirement for editing',
 			() => navigateRequirementByOffset(1),
 			{ variant: 'outline-secondary', size: 'sm', disabled: selection.index === requirements.length - 1 }
 		),
@@ -1401,9 +1907,19 @@ function createRequirementDetailCard(
 		createRequirementField(path, 'id', 'Requirement id', stringValue(requirement.id), false, 'REQ-EXAMPLE-0001'),
 		createRequirementField(path, 'title', 'Title', stringValue(requirement.title), false, 'Requirement title'),
 		createRequirementField(path, 'statement', 'Statement', stringValue(requirement.statement), true, 'Normative requirement statement'),
-		createRequirementListField(path, 'coverage', 'Coverage', requirement.coverage ?? [], false, 'Coverage item'),
-		createRequirementListField(path, 'trace', 'Trace', requirement.trace ?? [], false, 'Trace item'),
-		createRequirementListField(path, 'notes', 'Notes', requirement.notes ?? [], true, 'Note')
+		createRequirementListField(path, 'notes', 'Notes', requirement.notes ?? [], true, 'Note'),
+		createRequirementEvidenceViewCard(
+			'Coverage',
+			requirement.coverage ?? [],
+			'No coverage entries recorded yet.',
+			'Coverage is shown for reference here and is usually produced outside this editor.'
+		),
+		createRequirementEvidenceViewCard(
+			'Trace',
+			requirement.trace ?? [],
+			'No trace entries recorded yet.',
+			'Trace is shown for reference here and is usually produced outside this editor.'
+		)
 	);
 
 	detail.append(header, body, createErrorRegion());
@@ -1429,6 +1945,63 @@ function createSelectedRequirementOverview(
 	);
 
 	return overview;
+}
+
+function createReadonlyRequirementField(
+	labelText: string,
+	valueText: string,
+	metaText?: string,
+	wide = false
+): HTMLElement {
+	const field = createReadonlyField(labelText, valueText, metaText);
+	field.classList.add('requirement-readonly-field');
+	if (wide) {
+		field.classList.add('wide');
+	}
+	return field;
+}
+
+function createRequirementEvidenceViewCard(
+	title: string,
+	items: string[],
+	emptyMessage: string,
+	descriptionText?: string
+): HTMLElement {
+	const card = document.createElement('inc-card');
+	card.className = 'requirement-readonly-evidence-card wide';
+
+	const header = document.createElement('div');
+	header.slot = 'header';
+	header.append(
+		createSectionHeading(
+			title,
+			descriptionText ?? (items.length === 0 ? emptyMessage : `${items.length} item${items.length === 1 ? '' : 's'} recorded.`)
+		)
+	);
+
+	const body = document.createElement('div');
+	body.slot = 'body';
+	body.className = 'coverage-evidence-body';
+
+	if (items.length === 0) {
+		const emptyState = document.createElement('p');
+		emptyState.className = 'inc-text inc-text--small inc-text--muted requirement-readonly-empty';
+		emptyState.textContent = emptyMessage;
+		body.append(emptyState);
+	} else {
+		const list = document.createElement('inc-list-group');
+		list.setAttribute('dense', '');
+		list.className = 'coverage-evidence-list';
+		items.forEach((item) => {
+			const entry = document.createElement('div');
+			entry.textContent = item;
+			list.append(entry);
+		});
+		body.append(list);
+	}
+
+	card.append(header, body);
+	return card;
 }
 
 function createMetricBadge(id: string, label: string, tone: 'info' | 'success' | 'warning' | 'danger'): HTMLElement {
@@ -1661,18 +2234,24 @@ function createIconButton(
 	return button;
 }
 
-function createSectionHeading(title: string, description: string): HTMLElement {
+function createSectionHeading(title: string, description: string, infoTitle?: string): HTMLElement {
 	const container = document.createElement('div');
 	container.className = 'section-heading';
+	const titleRow = document.createElement('div');
+	titleRow.className = 'section-heading__title-row';
 	const heading = document.createElement('h2');
 	heading.className = 'inc-heading inc-heading--h5';
 	heading.textContent = title;
+	titleRow.append(heading);
+	if (infoTitle) {
+		titleRow.append(createInfoHint(infoTitle, `${title} help`));
+	}
 
 	const copy = document.createElement('div');
 	copy.className = 'section-copy inc-text inc-text--small inc-text--muted';
 	copy.textContent = description;
 
-	container.append(heading, copy);
+	container.append(titleRow, copy);
 	return container;
 }
 
@@ -1767,6 +2346,12 @@ function createButtonToolbar(label: string, className: string): HTMLElement {
 	return toolbar;
 }
 
+function createCardHeaderActions(label: string, ...items: HTMLElement[]): HTMLElement {
+	const actions = createButtonToolbar(label, 'card-header-actions');
+	actions.append(...items);
+	return actions;
+}
+
 function createButtonGroup(label: string, className: string, size: 'sm' | 'lg' | 'micro' = 'sm'): HTMLElement {
 	const group = document.createElement('inc-button-group');
 	group.className = className;
@@ -1805,7 +2390,7 @@ function refreshChrome(): void {
 	const conflictChip = document.getElementById('conflict-chip');
 	const validationChip = document.getElementById('validation-chip');
 	const coverageChip = document.getElementById('coverage-chip');
-	const coverageMeta = document.getElementById('coverage-meta');
+	const coverageMeta = document.getElementById('coverage-meta-text');
 	const validationSummary = document.getElementById('validation-summary');
 	const heroTitle = document.getElementById('hero-title');
 	const heroSubtitle = document.getElementById('hero-subtitle');
@@ -1832,6 +2417,7 @@ function refreshChrome(): void {
 
 	if (validationSummary) {
 		const isValid = currentIssues.length === 0;
+		validationSummary.hidden = isValid;
 		validationSummary.setAttribute('title', isValid
 			? 'No validation issues.'
 			: (currentIssues.length === 1 ? '1 validation issue prevents save.' : `${currentIssues.length} validation issues prevent save.`));
@@ -1869,6 +2455,8 @@ function refreshCoverageViews(coverageChip?: HTMLElement | null, coverageMeta?: 
 	if (coverageChip) {
 		coverageChip.textContent = state.label;
 		setBadgeTone(coverageChip, state.tone);
+		coverageChip.title = getCoverageDefinitionsHelpText();
+		coverageChip.setAttribute('aria-label', `Coverage summary. ${state.label}. ${getCoverageDefinitionsHelpText()}`);
 	}
 
 	if (coverageMeta) {
@@ -1899,6 +2487,8 @@ function refreshCoverageViews(coverageChip?: HTMLElement | null, coverageMeta?: 
 		const requirementSummary = summarizeRequirementCoverage(requirement);
 		badge.textContent = formatCoverageStatusLabel(requirementSummary.status);
 		setBadgeTone(badge, formatCoverageStatusTone(requirementSummary.status));
+		badge.title = getCoverageStatusExplanation(requirementSummary.status);
+		badge.setAttribute('aria-label', `${formatCoverageStatusLabel(requirementSummary.status)}. ${getCoverageStatusExplanation(requirementSummary.status)}`);
 	}
 
 	const requirementSummaryRows = Array.from(document.querySelectorAll<HTMLElement>('[data-requirement-summary-path]'));
@@ -1935,6 +2525,8 @@ function refreshCoverageViews(coverageChip?: HTMLElement | null, coverageMeta?: 
 		if (requirementStatus) {
 			requirementStatus.textContent = formatCoverageStatusLabel(requirementSummary.status);
 			setBadgeTone(requirementStatus, formatCoverageStatusTone(requirementSummary.status));
+			requirementStatus.title = getCoverageStatusExplanation(requirementSummary.status);
+			requirementStatus.setAttribute('aria-label', `${formatCoverageStatusLabel(requirementSummary.status)}. ${getCoverageStatusExplanation(requirementSummary.status)}`);
 		}
 	}
 
@@ -2047,7 +2639,7 @@ function getCoverageSummaryState(summary: ReturnType<typeof summarizeSpecificati
 	if (summary.missingCount === 0 && summary.partialCount === 0) {
 		return {
 			label: coverageLabel,
-			meta: 'All requirements have coverage evidence.',
+			meta: 'All requirements are covered.',
 			tone: 'success'
 		};
 	}
@@ -2055,14 +2647,19 @@ function getCoverageSummaryState(summary: ReturnType<typeof summarizeSpecificati
 	if (summary.missingCount === 0) {
 		return {
 			label: coverageLabel,
-			meta: `${summary.partialCount} partial requirement${summary.partialCount === 1 ? '' : 's'} still need coverage entries.`,
+			meta: `${summary.partialCount} partial requirement${summary.partialCount === 1 ? ' still needs' : 's still need'} coverage entries.`,
 			tone: 'warning'
 		};
 	}
 
+	const missingLabel = `${summary.missingCount} missing requirement${summary.missingCount === 1 ? ' has' : 's have'} no evidence`;
+	const partialLabel = summary.partialCount > 0
+		? ` ${summary.partialCount} partial requirement${summary.partialCount === 1 ? ' still needs' : 's still need'} coverage entries.`
+		: '';
+
 	return {
 		label: coverageLabel,
-		meta: `${summary.partialCount} partial and ${summary.missingCount} missing requirement${summary.missingCount === 1 ? '' : 's'}.`,
+		meta: `${missingLabel}.${partialLabel}`.trim(),
 		tone: 'danger'
 	};
 }
@@ -2177,7 +2774,7 @@ function flushPendingRevealCards(): void {
 			if (requirement) {
 				pendingRevealCardPaths.delete(cardPath);
 				setCoverageRequirementSelectionKey(coverageSelectionKeyForRequirement(requirement, requirementIndex));
-				currentRequirementViewMode = 'detail';
+				currentRequirementViewMode = 'view';
 				selectedRequirementPath = cardPath;
 				continue;
 			}
@@ -2243,7 +2840,11 @@ function persistWebviewState(): void {
 		coverageRequirementSelectionKey,
 		requirementsViewMode: currentRequirementViewMode,
 		requirementSearchQuery,
-		requirementIndexFilter
+		requirementIndexFilter,
+		requirementSortKey,
+		requirementSortDirection,
+		requirementCompactRows,
+		expandedRequirementRowPaths: Array.from(expandedRequirementRowPaths)
 	} satisfies SpecificationEditorWebviewState);
 }
 

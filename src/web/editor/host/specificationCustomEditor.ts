@@ -443,6 +443,16 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 			gap: 0.25rem;
 		}
 
+		.section-heading__title-row,
+		.summary-block__header,
+		.requirement-toolbar-label,
+		.hero-status-strip__meta {
+			display: inline-flex;
+			flex-wrap: wrap;
+			align-items: center;
+			gap: 0.45rem;
+		}
+
 		.section-heading h2 {
 			margin: 0;
 		}
@@ -450,6 +460,14 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 		.section-copy {
 			margin: 0;
 			color: var(--vscode-descriptionForeground);
+		}
+
+		.card-header-row {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			justify-content: space-between;
+			gap: 0.75rem 1rem;
 		}
 
 		.page-header-title,
@@ -522,6 +540,7 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 		}
 
 		.hero-actions,
+		.card-header-actions,
 		.section-actions,
 		.requirement-toolbar {
 			display: flex;
@@ -531,6 +550,10 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 		}
 
 		.hero-actions {
+			justify-content: flex-end;
+		}
+
+		.card-header-actions {
 			justify-content: flex-end;
 		}
 
@@ -614,6 +637,10 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 			min-width: 0;
 		}
 
+		.requirements-index-card {
+			--bs-card-border-radius: 0.5rem;
+		}
+
 		.requirements-index-shell {
 			display: grid;
 			gap: 0.75rem;
@@ -621,34 +648,93 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 
 		.requirement-index-toolbar {
 			display: grid;
-			grid-template-columns: minmax(18rem, 1fr) auto;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
 			gap: 0.75rem 1rem;
-			align-items: end;
+			align-items: start;
 		}
 
-		.requirement-index-search-field {
+		.requirement-toolbar-panel {
+			display: grid;
+			gap: 0.75rem;
+			min-width: 0;
+			padding: 0.9rem 0.95rem;
+			border: 1px solid color-mix(in srgb, var(--vscode-panel-border, var(--inc-border-subtle, #d0d7de)) 75%, transparent);
+			border-radius: 0.875rem;
+			background: color-mix(in srgb, var(--vscode-editorWidget-background, var(--inc-surface-panel, #ffffff)) 88%, transparent);
+			box-shadow: var(--inc-surface-panel-shadow, none);
+		}
+
+		.requirement-toolbar-panel__header,
+		.requirement-toolbar-panel__body,
+		.requirement-toolbar-group,
+		.requirement-density-switch {
+			display: grid;
+			gap: 0.5rem;
+			min-width: 0;
+		}
+
+		.requirement-toolbar-panel__header {
+			gap: 0.35rem;
+		}
+
+		.requirement-toolbar-panel__header .requirement-toolbar-label {
+			font-size: 0.8125rem;
+			font-weight: 600;
+			color: var(--vscode-foreground);
+		}
+
+		.requirement-index-search-field,
+		.requirement-index-search-input,
+		.requirement-toolbar-group,
+		.requirement-toolbar-panel__body {
 			min-width: 0;
 		}
 
 		.requirement-index-search-control,
-		.requirement-index-search-input {
+		.requirement-index-search-input,
+		.requirement-index-sort-select {
 			width: 100%;
+		}
+
+		.requirement-index-sort-controls {
+			display: grid;
+			grid-template-columns: minmax(0, auto) minmax(0, 1fr);
+			gap: 0.5rem;
+			align-items: center;
+		}
+
+		.requirement-index-sort-select {
+			min-width: 0;
 		}
 
 		.requirement-index-filter-group {
 			display: flex;
 			flex-wrap: wrap;
 			gap: 0.5rem;
-			justify-content: flex-end;
+			justify-content: flex-start;
 		}
 
 		.requirement-index-results {
 			grid-column: 1 / -1;
 		}
 
+		.requirement-density-switch__choice {
+			margin: 0;
+		}
+
+		.requirement-density-switch__choice .inc-form__check-label {
+			font-size: 0.875rem;
+		}
+
 		.requirement-index-list {
-			border-radius: 0.875rem;
-			overflow: clip;
+			border-radius: 0;
+			overflow: visible;
+		}
+
+		.requirement-index-list > .inc-list-group__item,
+		.requirement-index-list > .inc-list-group__item:first-child,
+		.requirement-index-list > .inc-list-group__item:last-child {
+			border-radius: 0;
 		}
 
 		.requirements-list {
@@ -682,10 +768,21 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 			appearance: none;
 		}
 
+		.requirement-index-row.active {
+			background: color-mix(in srgb, var(--vscode-list-activeSelectionBackground, #cce6ff) 24%, transparent);
+			color: var(--vscode-foreground);
+			box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder, #3794ff) 55%, transparent);
+		}
+
+		.requirement-index-row.active .requirement-summary-statement,
+		.requirement-index-row.active .requirement-index-evidence {
+			color: color-mix(in srgb, var(--vscode-foreground) 68%, var(--vscode-descriptionForeground) 32%);
+		}
+
 		.requirement-index-row:focus-visible {
 			outline: 2px solid var(--vscode-focusBorder);
-			outline-offset: 3px;
-			border-radius: 0.5rem;
+			outline-offset: -2px;
+			border-radius: 0;
 		}
 
 		.requirement-index-row--warning:not(.active) {
@@ -694,15 +791,47 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 
 		.requirement-index-header {
 			display: grid;
-			grid-template-columns: minmax(0, 1fr) auto;
+			grid-template-columns: auto minmax(0, 1fr) auto;
 			gap: 0.75rem;
-			align-items: start;
+			align-items: center;
+		}
+
+		.requirement-index-expand {
+			align-self: center;
+			white-space: nowrap;
+		}
+
+		.requirement-index-expand {
+			min-width: 1.8rem;
+			padding-inline: 0.45rem;
+			font-weight: 700;
 		}
 
 		.requirement-summary {
 			display: grid;
 			gap: 0.25rem;
 			width: 100%;
+		}
+
+		.requirement-index-open {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) auto;
+			gap: 0.75rem;
+			align-items: center;
+			width: 100%;
+			padding: 0;
+			border: 0;
+			background: transparent;
+			color: inherit;
+			text-align: left;
+			font: inherit;
+			cursor: pointer;
+			appearance: none;
+		}
+
+		.requirement-index-open-button {
+			align-self: center;
+			white-space: nowrap;
 		}
 
 		.requirement-summary-copy {
@@ -753,11 +882,59 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 			white-space: nowrap;
 		}
 
+		.requirement-index-row--compact {
+			padding-top: 0.7rem;
+			padding-bottom: 0.7rem;
+		}
+
+		.requirement-index-row--compact .requirement-index-header {
+			align-items: center;
+		}
+
 		.requirements-issue-badge,
 		.requirements-issue-count,
 		.requirement-detail-metric {
 			min-width: 4rem;
 			justify-content: center;
+		}
+
+		.info-hint {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 0.82rem;
+			height: 0.82rem;
+			border-radius: 999px;
+			border: 1px solid color-mix(in srgb, var(--vscode-inputBorder, var(--vscode-contrastBorder, #6b7280)) 50%, transparent);
+			background: transparent;
+			color: color-mix(in srgb, var(--vscode-descriptionForeground) 82%, transparent);
+			font-size: 0.56rem;
+			font-weight: 600;
+			line-height: 1;
+			cursor: help;
+			user-select: none;
+			opacity: 0.85;
+		}
+
+		.inline-triangle-icon {
+			display: block;
+			width: 0.65rem;
+			height: 0.65rem;
+			flex: 0 0 auto;
+		}
+
+		.triangle-button-label {
+			line-height: 1;
+		}
+
+		inc-button .inline-triangle-icon {
+			width: 0.72rem;
+			height: 0.72rem;
+		}
+
+		.info-hint:focus-visible {
+			outline: 2px solid var(--vscode-focusBorder);
+			outline-offset: 2px;
 		}
 
 		.requirement-detail-header {
@@ -785,8 +962,13 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 		}
 
 		.requirement-detail-overview,
-		.requirement-detail-body .wide {
+		.requirement-detail-body .wide,
+		.requirement-readonly-field.wide {
 			grid-column: 1 / -1;
+		}
+
+		.requirement-readonly-field {
+			width: 100%;
 		}
 
 		.field-errors {
@@ -830,15 +1012,25 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 				justify-content: flex-start;
 			}
 
-			.requirement-index-header {
+			.requirement-index-sort-controls {
 				grid-template-columns: 1fr;
+				align-items: stretch;
+			}
+
+			.requirement-index-sort-select {
+				width: 100%;
 			}
 
 			.requirement-index-meta {
 				justify-content: flex-start;
 			}
 
+			.requirement-index-open {
+				grid-template-columns: 1fr;
+			}
+
 			.hero-actions,
+			.card-header-actions,
 			.section-actions,
 			.requirement-detail-header {
 				justify-content: flex-start;
