@@ -98,7 +98,7 @@
     "pretest": "npm run compile-web",
     "vscode:prepublish": "npm run package-web",
     "compile-web": "npm run check-types && npm run lint && node esbuild.js",
-    "test:web": "vscode-test-web --browserType=chromium --extensionDevelopmentPath=. --extensionTestsPath=dist/web/test/suite/extensionTests.js",
+    "test:web": "vscode-test-web --browserType=chromium --headless --extensionDevelopmentPath=. --extensionTestsPath=dist/web/test/suite/extensionTests.js",
     "test:webview": "node scripts/webview-smoke.mjs",
     "watch-web": "npm-run-all -p watch-web:*",
     "watch-web:esbuild": "node esbuild.js --watch",
