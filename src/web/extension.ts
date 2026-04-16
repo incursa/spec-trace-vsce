@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 
 import { SPECIFICATION_CUSTOM_EDITOR_VIEW_TYPE, SpecificationCustomEditorProvider } from './editor/host/specificationCustomEditor.js';
+import { registerSpecTraceExplorer } from './navigation/specTraceExplorer.js';
 
 export function activate(context: vscode.ExtensionContext): void {
 	const provider = new SpecificationCustomEditorProvider(context);
@@ -24,7 +25,8 @@ export function activate(context: vscode.ExtensionContext): void {
 			webviewOptions: {
 				retainContextWhenHidden: true
 			}
-		})
+		}),
+		registerSpecTraceExplorer(context, provider)
 	);
 }
 

@@ -1,10 +1,17 @@
 .vscode/**
+.github/**
 .vscode-test-web/**
+.workbench/**
+artifacts/**
 src/**
 out/**
 node_modules/**
 dist/**/test/**
 .gitignore
+runbooks/**
+scripts/**
+specs/**
+tracking/**
 vsc-extension-quickstart.md
 webpack.config.js
 esbuild.js

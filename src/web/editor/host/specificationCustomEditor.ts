@@ -22,6 +22,10 @@ type SpecificationEditorHostMessage =
 		document: SpecificationDocument;
 	}
 	| {
+		type: 'reveal';
+		cardPath: string;
+	}
+	| {
 		type: 'save' | 'openText';
 	};
 
@@ -47,6 +51,11 @@ function isSpecificationEditorHostMessage(value: unknown): value is Specificatio
 		return true;
 	}
 
+	if (candidate.type === 'reveal') {
+		const revealCandidate = value as { cardPath?: unknown };
+		return typeof revealCandidate.cardPath === 'string' && revealCandidate.cardPath.length > 0;
+	}
+
 	if (candidate.type === 'edit') {
 		const editCandidate = value as { document?: unknown };
 		return typeof editCandidate.document === 'object' && editCandidate.document !== null;
@@ -57,6 +66,7 @@ function isSpecificationEditorHostMessage(value: unknown): value is Specificatio
 
 export class SpecificationCustomEditorProvider implements vscode.CustomEditorProvider<SpecificationCustomDocument> {
 	private readonly _onDidChangeCustomDocument = new vscode.EventEmitter<vscode.CustomDocumentEditEvent<SpecificationCustomDocument>>();
+	private readonly _documents = new Map<string, SpecificationCustomDocument>();
 
 	public readonly onDidChangeCustomDocument = this._onDidChangeCustomDocument.event;
 
@@ -82,7 +92,9 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 			throw new Error('The document could not be parsed as JSON.');
 		}
 
-		return new SpecificationCustomDocument(workspaceFolder, uri, text, document, this);
+		const customDocument = new SpecificationCustomDocument(workspaceFolder, uri, text, document, this);
+		this._documents.set(uri.toString(), customDocument);
+		return customDocument;
 	}
 
 	public resolveCustomEditor(
@@ -107,6 +119,7 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 			}
 
 			if (message.type === 'ready') {
+				document.markWebviewReady();
 				void this.syncDocument(document, 'open');
 				return;
 			}
@@ -142,8 +155,29 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 						void this.syncDocument(document, 'redo');
 					}
 				});
+				return;
+			}
+
+			if (message.type === 'reveal') {
+				void document.revealCard(message.cardPath);
 			}
 		});
+	}
+
+	public async openSpecificationDocument(uri: vscode.Uri): Promise<void> {
+		await vscode.commands.executeCommand('vscode.openWith', uri, SPECIFICATION_CUSTOM_EDITOR_VIEW_TYPE);
+	}
+
+	public async revealRequirement(uri: vscode.Uri, requirementIndex: number): Promise<void> {
+		const cardPath = `requirements[${requirementIndex}]`;
+		await this.openSpecificationDocument(uri);
+
+		const document = await this.waitForOpenDocument(uri);
+		if (!document) {
+			return;
+		}
+
+		await document.revealCard(cardPath);
 	}
 
 	public async saveCustomDocument(document: SpecificationCustomDocument, cancellation: vscode.CancellationToken): Promise<void> {
@@ -202,6 +236,29 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 			isDirty: document.isDirty,
 			externalConflict: document.externalConflict
 		});
+		await document.flushPendingReveals();
+	}
+
+	public releaseDocument(uri: vscode.Uri): void {
+		this._documents.delete(uri.toString());
+	}
+
+	private async waitForOpenDocument(uri: vscode.Uri, timeoutMs = 1_500): Promise<SpecificationCustomDocument | undefined> {
+		const deadline = Date.now() + timeoutMs;
+		const key = uri.toString();
+
+		while (Date.now() < deadline) {
+			const document = this._documents.get(key);
+			if (document) {
+				return document;
+			}
+
+			await new Promise((resolve) => {
+				setTimeout(resolve, 50);
+			});
+		}
+
+		return undefined;
 	}
 
 	private async saveDocumentToUri(
@@ -303,6 +360,9 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 		const scriptUri = webview.asWebviewUri(
 			vscode.Uri.joinPath(this.extensionContext.extensionUri, 'dist', 'web', 'editor', 'webview', 'main.js')
 		);
+		const styleUri = webview.asWebviewUri(
+			vscode.Uri.joinPath(this.extensionContext.extensionUri, 'dist', 'web', 'editor', 'webview', 'main.css')
+		);
 		const nonce = this.createNonce();
 
 		return /* html */ `<!DOCTYPE html>
@@ -312,496 +372,479 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Spec Trace Editor</title>
+	<link rel="stylesheet" href="${styleUri}">
 </head>
 <body>
+	<script nonce="${nonce}">
+		const vscodeTheme = document.body.classList.contains('vscode-dark')
+			|| document.body.classList.contains('vscode-high-contrast')
+			|| document.body.classList.contains('vscode-high-contrast-dark')
+			? 'dark'
+			: 'light';
+		document.body.setAttribute('data-bs-theme', vscodeTheme);
+		document.documentElement.setAttribute('data-bs-theme', vscodeTheme);
+	</script>
 	<div id="app" class="app-shell">
-		<div class="loading-card">
-			<div class="loading-title">Spec Trace editor</div>
-			<div class="loading-body">Loading structured editor...</div>
-		</div>
+		<inc-state-panel class="loading-panel inc-state-panel inc-state-panel--info" variant="info">
+			<div class="inc-state-panel__head">
+				<span class="inc-state-panel__icon">Loading</span>
+				<h2 class="inc-state-panel__title">Spec Trace editor</h2>
+			</div>
+			<p class="inc-state-panel__body">Loading structured editor...</p>
+			<div class="inc-state-panel__actions"></div>
+		</inc-state-panel>
 	</div>
 	<style nonce="${nonce}">
-		:root {
-			color-scheme: light dark;
-			--page-padding: 16px;
-			--panel-gap: 12px;
-			--card-radius: 14px;
-			--card-border: color-mix(in srgb, var(--vscode-panel-border) 52%, var(--vscode-foreground) 24%);
-			--control-border: color-mix(in srgb, var(--card-border) 78%, var(--vscode-foreground) 22%);
-			--page-bg: color-mix(in srgb, var(--vscode-editor-background) 92%, var(--vscode-sideBar-background) 8%);
-			--card-bg: color-mix(in srgb, var(--vscode-editor-background) 84%, var(--vscode-sideBar-background) 16%);
-			--card-bg-strong: color-mix(in srgb, var(--vscode-editor-background) 76%, var(--vscode-sideBar-background) 24%);
-			--accent: var(--vscode-focusBorder);
-			--muted: var(--vscode-descriptionForeground);
-			--danger: var(--vscode-errorForeground);
-			--text: var(--vscode-foreground);
-			--input-bg: color-mix(in srgb, var(--vscode-input-background) 82%, var(--vscode-sideBar-background) 18%);
-			--input-border: color-mix(in srgb, var(--vscode-input-border, var(--card-border)) 66%, var(--vscode-foreground) 22%);
-			--control-bg: color-mix(in srgb, var(--vscode-input-background) 76%, var(--vscode-sideBar-background) 24%);
-			--control-bg-strong: color-mix(in srgb, var(--vscode-input-background) 68%, var(--vscode-sideBar-background) 32%);
-			--control-shadow: 0 1px 0 rgba(255, 255, 255, 0.72) inset, 0 1px 2px rgba(0, 0, 0, 0.05);
-			--control-shadow-strong: 0 1px 0 rgba(255, 255, 255, 0.84) inset, 0 2px 5px rgba(0, 0, 0, 0.08);
-		}
-
-		body.vscode-light,
-		body.vscode-high-contrast-light {
-			background:
-				radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 18%, transparent) 0%, transparent 32%),
-				radial-gradient(circle at bottom right, color-mix(in srgb, #84b0ff 14%, transparent) 0%, transparent 34%),
-				linear-gradient(180deg, color-mix(in srgb, var(--page-bg) 92%, #ffffff) 0%, var(--page-bg) 100%);
-			--accent: #1f57d8;
-			--card-border: #b0bfd4;
-			--control-border: #90a6c3;
-			--page-bg: #d9e5f4;
-			--card-bg: #ffffff;
-			--card-bg-strong: #ecf3fc;
-			--input-bg: #f5faff;
-			--input-border: #879fbf;
-			--control-bg: #e0ebfa;
-			--control-bg-strong: #cdddf2;
-			--muted: #42546b;
-			--control-shadow: 0 1px 0 rgba(255, 255, 255, 0.94) inset, 0 1px 2px rgba(38, 52, 74, 0.07);
-			--control-shadow-strong: 0 1px 0 rgba(255, 255, 255, 0.98) inset, 0 2px 7px rgba(38, 52, 74, 0.1);
-		}
-
 		html, body {
 			margin: 0;
 			min-height: 100%;
-			background:
-				radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 8%, transparent) 0%, transparent 34%),
-				linear-gradient(180deg, color-mix(in srgb, var(--page-bg) 96%, #ffffff) 0%, var(--page-bg) 100%);
-			color: var(--text);
+			background: var(--inc-surface-muted);
+			color: var(--vscode-foreground);
 			font-family: var(--vscode-font-family);
+			color-scheme: light dark;
 		}
 
-		.app-shell {
+		body[data-bs-theme="light"],
+		html[data-bs-theme="light"] {
+			--bs-secondary-bg: #f7f9fc;
+			--bs-tertiary-bg: #e3e8f1;
+			--bs-border-color: #95a0b1;
+			--bs-border-color-translucent: rgba(42, 49, 66, 0.28);
+		}
+
+		#app,
+		.app-shell,
+		.editor-page {
 			box-sizing: border-box;
 			min-height: 100vh;
-			padding: var(--page-padding);
 		}
 
-		.loading-card,
-		.hero,
-		.card {
-			border: 1px solid var(--card-border);
-			background: linear-gradient(180deg, color-mix(in srgb, var(--card-bg-strong) 24%, var(--card-bg) 76%) 0%, var(--card-bg) 100%);
-			border-radius: var(--card-radius);
-			box-shadow: var(--control-shadow-strong);
-		}
-
-		.loading-card {
+		#app {
 			padding: 24px;
-			max-width: 520px;
 		}
 
-		.loading-title {
-			font-size: 18px;
-			font-weight: 600;
-			margin-bottom: 8px;
-		}
-
-		.loading-body {
-			color: var(--muted);
+		.editor-page {
+			display: block;
 		}
 
 		.editor-root {
 			display: grid;
-			gap: var(--panel-gap);
+			gap: 1.25rem;
 			max-width: 1400px;
 			margin: 0 auto;
 		}
 
-		.hero {
-			padding: 14px 16px;
-			display: flex;
-			justify-content: space-between;
-			align-items: flex-start;
-			gap: 14px;
-		}
-
-		.hero-title {
-			font-size: 20px;
-			font-weight: 700;
-			margin: 0 0 6px 0;
-		}
-
-		.hero-subtitle {
-			color: var(--muted);
-			font-size: 13px;
-		}
-
-		.hero-meta {
-			display: grid;
-			gap: 8px;
-			justify-items: end;
-		}
-
-		.status-row {
-			display: flex;
-			flex-wrap: wrap;
-			gap: 8px;
-			justify-content: flex-end;
-		}
-
-		.hero-actions {
-			display: flex;
-			flex-wrap: wrap;
-			gap: 8px;
-			justify-content: flex-end;
-		}
-
-		.status-chip {
-			border-radius: 999px;
-			padding: 6px 10px;
-			font-size: 12px;
-			line-height: 1;
-			border: 1px solid var(--card-border);
-			background: linear-gradient(180deg, color-mix(in srgb, var(--control-bg-strong) 74%, var(--accent) 26%) 0%, var(--control-bg) 100%);
-		}
-
-		.status-chip.warning {
-			border-color: color-mix(in srgb, var(--danger) 55%, var(--card-border));
-			color: var(--danger);
-		}
-
-		.card {
-			padding: 14px 16px 16px;
-		}
-
-		.card h2,
-		.card h3 {
-			margin: 0 0 14px 0;
+		.loading-panel {
+			max-width: 540px;
 		}
 
 		.section-heading {
 			display: grid;
-			gap: 4px;
+			gap: 0.25rem;
 		}
 
 		.section-heading h2 {
 			margin: 0;
-			font-size: 16px;
-		}
-
-		.section-heading .section-copy {
-			margin: 0;
 		}
 
 		.section-copy {
-			color: var(--muted);
-			font-size: 13px;
+			margin: 0;
+			color: var(--vscode-descriptionForeground);
 		}
 
-		.section-heading-row {
+		.page-header-title,
+		.page-header-body,
+		.summary-overview,
+		.form-grid,
+		.list-field,
+		.requirements-list,
+		.requirements-screen,
+		.requirements-index-shell,
+		.requirement-detail-body,
+		.field-errors {
+			min-width: 0;
+		}
+
+		.page-header-title {
+			display: grid;
+			gap: 0.25rem;
+		}
+
+		.page-header-body {
+			display: grid;
+			gap: 0.5rem;
+		}
+
+		.page-header-subtitle {
+			margin: 0;
+		}
+
+		.hero-status-strip {
+			display: grid;
+			gap: 0.4rem;
+		}
+
+		.hero-status-strip__chips {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 0.5rem;
+			align-items: center;
+		}
+
+		.hero-status-strip__meta,
+		.requirement-index-results {
+			margin: 0;
+		}
+
+		.disclosure-summary {
+			display: grid;
+			gap: 0.25rem;
+			width: 100%;
+		}
+
+		.disclosure-summary__row {
 			display: flex;
 			align-items: flex-start;
 			justify-content: space-between;
-			gap: 12px;
+			gap: 0.75rem;
 		}
 
-		.section-heading-row .section-heading {
-			flex: 1 1 auto;
+		.disclosure-summary__title {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: baseline;
+			gap: 0.5rem;
+			min-width: 0;
 		}
 
-		.section-heading-row .action-button {
-			flex: 0 0 auto;
-		}
-
-		.collapsible-card {
-			padding: 0;
-			overflow: clip;
-		}
-
-		.collapsible-card > summary {
-			list-style: none;
-			cursor: pointer;
-			padding: 14px 16px;
-			background: linear-gradient(180deg, var(--card-bg-strong) 0%, var(--card-bg) 100%);
-		}
-
-		.collapsible-card > summary::-webkit-details-marker {
-			display: none;
-		}
-
-		.collapsible-card[open] > summary {
-			border-bottom: 1px solid var(--card-border);
-		}
-
-		.collapsible-card-summary {
+		.disclosure-summary__description {
 			display: block;
 		}
 
-		.collapsible-card-summary .section-heading {
-			padding-right: 12px;
+		.hero-actions,
+		.section-actions,
+		.requirement-toolbar {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 0.5rem;
+			align-items: center;
 		}
 
-		.card-body {
-			padding: 12px 16px 16px;
-			background: linear-gradient(180deg, color-mix(in srgb, var(--card-bg) 92%, var(--page-bg) 8%) 0%, var(--card-bg) 100%);
-			border-top: 1px solid color-mix(in srgb, var(--card-border) 86%, transparent);
+		.hero-actions {
+			justify-content: flex-end;
+		}
+
+		.summary-overview {
+			width: 100%;
+		}
+
+		.coverage-summary-chip,
+		.coverage-body,
+		.coverage-detail,
+		.coverage-selected-body,
+		.coverage-evidence-body {
+			display: grid;
+			gap: 0.75rem;
+			min-width: 0;
+		}
+
+		.coverage-summary-chip {
+			gap: 0.35rem;
+			justify-items: start;
+		}
+
+		.coverage-metric {
+			display: grid;
+			gap: 0.25rem;
+			justify-items: start;
+		}
+
+		.coverage-metric__value {
+			min-width: 5rem;
+			justify-content: center;
+		}
+
+		.coverage-summary-meta {
+			margin: 0;
+		}
+
+		.coverage-detail-card,
+		.coverage-selected-card {
+			min-width: 0;
 		}
 
 		.form-grid {
 			display: grid;
 			grid-template-columns: repeat(2, minmax(0, 1fr));
-			gap: 10px 12px;
+			gap: 0.75rem 1rem;
 		}
 
-		.form-field,
-		.list-field,
-		.requirement-card {
-			display: grid;
-			gap: 6px;
-			background: linear-gradient(180deg, color-mix(in srgb, var(--card-bg-strong) 14%, var(--card-bg) 86%) 0%, var(--card-bg) 100%);
-			border: 1px solid color-mix(in srgb, var(--card-border) 92%, transparent);
-			border-radius: 10px;
-			padding: 10px;
-			box-shadow: var(--control-shadow);
-		}
-
-		.form-field.wide,
-		.list-field.wide,
-		.requirement-card {
+		.editor-field--wide {
 			grid-column: 1 / -1;
 		}
 
-		.field-label {
-			font-size: 12px;
-			font-weight: 600;
-			color: var(--muted);
-			text-transform: uppercase;
-			letter-spacing: 0.04em;
-		}
-
-		.field-input,
-		.field-textarea {
+		.editor-field__control {
 			width: 100%;
 			box-sizing: border-box;
-			border-radius: 10px;
-			border: 1px solid var(--input-border);
-			background: linear-gradient(180deg, color-mix(in srgb, var(--input-bg) 90%, #ffffff 10%) 0%, var(--input-bg) 100%);
-			color: var(--text);
-			padding: 8px 10px;
-			font: inherit;
-			box-shadow: var(--control-shadow);
 		}
 
-		.field-input {
-			min-height: 36px;
-		}
-
-		.field-textarea {
-			min-height: 76px;
+		.editor-field__control--textarea {
+			min-height: 7rem;
 			resize: vertical;
 		}
 
-		.field-input[readonly] {
-			background: linear-gradient(180deg, color-mix(in srgb, var(--card-bg-strong) 56%, var(--page-bg) 44%) 0%, var(--card-bg) 100%);
-			color: color-mix(in srgb, var(--text) 76%, var(--muted) 24%);
-			opacity: 0.95;
-		}
-
-		.form-field.has-errors > .field-input,
-		.form-field.has-errors > .field-textarea,
-		.list-row.has-errors > .field-input,
-		.list-row.has-errors > .field-textarea,
-		.requirement-card.has-errors,
-		.collapsible-card.has-errors {
-			border-color: color-mix(in srgb, var(--danger) 42%, var(--card-border));
-		}
-
-		.field-errors,
-		.summary-errors {
-			color: var(--danger);
-			font-size: 12px;
+		.list-field {
 			display: grid;
-			gap: 4px;
+			gap: 0.75rem;
 		}
 
-		.summary-errors {
-			margin-bottom: 12px;
+		.list-field__control {
+			display: grid;
+			gap: 0.5rem;
+			min-width: 0;
 		}
 
-		.list-row,
-		.requirement-toolbar {
+		.requirements-screen {
+			display: grid;
+			gap: 0.75rem;
+		}
+
+		.requirements-index-card,
+		.requirement-detail-card {
+			min-width: 0;
+		}
+
+		.requirements-index-shell {
+			display: grid;
+			gap: 0.75rem;
+		}
+
+		.requirement-index-toolbar {
+			display: grid;
+			grid-template-columns: minmax(18rem, 1fr) auto;
+			gap: 0.75rem 1rem;
+			align-items: end;
+		}
+
+		.requirement-index-search-field {
+			min-width: 0;
+		}
+
+		.requirement-index-search-control,
+		.requirement-index-search-input {
+			width: 100%;
+		}
+
+		.requirement-index-filter-group {
 			display: flex;
-			align-items: flex-start;
-			gap: 6px;
-			border: 1px solid color-mix(in srgb, var(--card-border) 90%, transparent);
-			border-radius: 10px;
-			padding: 8px;
-			background: linear-gradient(180deg, color-mix(in srgb, var(--control-bg-strong) 22%, var(--control-bg) 78%) 0%, var(--control-bg) 100%);
-			box-shadow: var(--control-shadow);
+			flex-wrap: wrap;
+			gap: 0.5rem;
+			justify-content: flex-end;
 		}
 
-		.list-row .field-input,
-		.list-row .field-textarea {
-			flex: 1 1 auto;
+		.requirement-index-results {
+			grid-column: 1 / -1;
 		}
 
-		.icon-button,
-		.action-button {
-			border: 1px solid var(--control-border);
-			background: linear-gradient(180deg, var(--control-bg-strong) 0%, var(--control-bg) 100%);
-			color: var(--text);
-			border-radius: 8px;
-			padding: 7px 10px;
-			font: inherit;
-			cursor: pointer;
-			box-shadow: var(--control-shadow);
-		}
-
-		.action-button.primary {
-			border-color: color-mix(in srgb, var(--accent) 64%, var(--control-border));
-			background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 92%, #ffffff 8%) 0%, color-mix(in srgb, var(--accent) 86%, #000000 14%) 100%);
-			color: #ffffff;
-		}
-
-		body.vscode-light .action-button.primary:hover,
-		body.vscode-high-contrast-light .action-button.primary:hover {
-			background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 84%, #ffffff 16%) 0%, color-mix(in srgb, var(--accent) 76%, #000000 24%) 100%);
-		}
-
-		.icon-button:disabled,
-		.action-button:disabled {
-			opacity: 0.45;
-			cursor: not-allowed;
+		.requirement-index-list {
+			border-radius: 0.875rem;
+			overflow: clip;
 		}
 
 		.requirements-list {
 			display: grid;
-			gap: 10px;
+			gap: 0.5rem;
 		}
 
-		.requirement-card {
-			padding: 0;
-			border-radius: 12px;
-			border: 1px solid var(--card-border);
-			background: linear-gradient(180deg, var(--card-bg-strong) 0%, var(--card-bg) 100%);
+		.list-row {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) auto;
+			gap: 0.5rem;
+			align-items: start;
+			min-width: 0;
+		}
+
+		.list-row__controls {
+			align-self: start;
+		}
+
+		.requirement-index-row {
+			display: grid;
+			gap: 0.45rem;
+			width: 100%;
+			padding: 0.85rem 0.95rem;
+			border: 0;
+			background: transparent;
+			color: inherit;
+			text-align: left;
+			font: inherit;
+			cursor: pointer;
+			appearance: none;
+		}
+
+		.requirement-index-row:focus-visible {
+			outline: 2px solid var(--vscode-focusBorder);
+			outline-offset: 3px;
+			border-radius: 0.5rem;
+		}
+
+		.requirement-index-row--warning:not(.active) {
+			background: color-mix(in srgb, var(--vscode-inputValidation-warningBackground, #fff4ce) 22%, transparent);
+		}
+
+		.requirement-index-header {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) auto;
+			gap: 0.75rem;
+			align-items: start;
 		}
 
 		.requirement-summary {
-			display: flex;
-			align-items: flex-start;
-			justify-content: space-between;
-			gap: 12px;
-			padding: 12px 14px;
-			cursor: pointer;
-			list-style: none;
-			background: linear-gradient(180deg, var(--card-bg-strong) 0%, color-mix(in srgb, var(--card-bg) 88%, var(--page-bg) 12%) 100%);
-		}
-
-		.requirement-summary::-webkit-details-marker {
-			display: none;
+			display: grid;
+			gap: 0.25rem;
+			width: 100%;
 		}
 
 		.requirement-summary-copy {
-			flex: 1 1 auto;
+			display: grid;
+			gap: 0.2rem;
 			min-width: 0;
 		}
 
 		.requirement-summary-line {
 			display: flex;
+			gap: 0.5rem;
 			flex-wrap: wrap;
 			align-items: baseline;
-			gap: 8px;
+			min-width: 0;
 		}
 
 		.requirement-summary-id {
-			font-size: 12px;
 			font-weight: 700;
-			letter-spacing: 0.03em;
-			text-transform: uppercase;
 		}
 
 		.requirement-summary-title {
-			font-size: 14px;
 			font-weight: 600;
 		}
 
 		.requirement-summary-statement {
-			color: var(--muted);
-			font-size: 12px;
-			margin-top: 4px;
+			color: var(--vscode-descriptionForeground);
+			font-size: 0.875rem;
+			display: -webkit-box;
+			overflow: hidden;
+			-webkit-box-orient: vertical;
+			-webkit-line-clamp: 2;
 		}
 
 		.requirement-summary-state {
-			flex: 0 0 auto;
-			color: var(--muted);
-			font-size: 11px;
-			text-transform: uppercase;
-			letter-spacing: 0.05em;
-			padding-top: 3px;
+			min-width: 5.5rem;
+			justify-content: center;
 		}
 
-		.requirement-card[open] > .requirement-summary {
-			border-bottom: 1px solid var(--card-border);
+		.requirement-index-meta {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 0.5rem;
+			align-items: center;
+			justify-content: flex-end;
 		}
 
-		.requirement-body {
+		.requirement-index-evidence {
+			white-space: nowrap;
+		}
+
+		.requirements-issue-badge,
+		.requirements-issue-count,
+		.requirement-detail-metric {
+			min-width: 4rem;
+			justify-content: center;
+		}
+
+		.requirement-detail-header {
+			display: flex;
+			align-items: flex-start;
+			justify-content: space-between;
+			gap: 1rem;
+		}
+
+		.requirement-detail-heading {
+			display: grid;
+			gap: 0.25rem;
+			min-width: 0;
+		}
+
+		.requirement-detail-heading h2,
+		.requirement-detail-subtitle {
+			margin: 0;
+		}
+
+		.requirement-detail-body {
 			display: grid;
 			grid-template-columns: repeat(2, minmax(0, 1fr));
-			gap: 10px 12px;
-			padding: 12px 14px 14px;
-			background: linear-gradient(180deg, color-mix(in srgb, var(--card-bg) 94%, var(--page-bg) 6%) 0%, var(--card-bg) 100%);
-			border-top: 1px solid color-mix(in srgb, var(--card-border) 84%, transparent);
+			gap: 0.75rem 1rem;
 		}
 
-		.requirement-body .wide {
+		.requirement-detail-overview,
+		.requirement-detail-body .wide {
 			grid-column: 1 / -1;
 		}
 
-		.helper {
-			color: var(--muted);
-			font-size: 12px;
+		.field-errors {
+			color: var(--vscode-errorForeground);
+			font-size: 0.875rem;
 		}
 
-		.field-input:focus-visible,
-		.field-textarea:focus-visible,
-		.icon-button:focus-visible,
-		.action-button:focus-visible,
-		.collapsible-card > summary:focus-visible,
-		.requirement-summary:focus-visible {
-			outline: none;
-			box-shadow:
-				0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent),
-				0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent),
-				var(--control-shadow-strong);
+		.has-errors > .inc-disclosure,
+		.has-errors.inc-disclosure {
+			outline: 1px solid var(--vscode-errorForeground);
+			outline-offset: -1px;
 		}
 
-		.icon-button:hover,
-		.action-button:hover {
-			background: linear-gradient(180deg, color-mix(in srgb, var(--control-bg-strong) 58%, var(--accent) 42%) 0%, var(--control-bg) 100%);
+		.list-row.has-errors,
+		.requirement-card.has-errors {
+			outline: 1px solid var(--vscode-errorForeground);
+			outline-offset: -1px;
 		}
 
-		.icon-button:active,
-		.action-button:active {
-			transform: translateY(1px);
-		}
-
-		@media (max-width: 960px) {
+		@media (max-width: 900px) {
 			.form-grid,
-			.requirement-body {
+			.requirement-detail-body {
 				grid-template-columns: 1fr;
 			}
 
-			.hero {
-				flex-direction: column;
+			.editor-field--wide,
+			.requirement-detail-overview,
+			.requirement-detail-body .wide {
+				grid-column: auto;
 			}
 
-			.hero-meta {
-				justify-items: start;
+			.list-row {
+				grid-template-columns: 1fr;
 			}
 
-			.status-row {
+			.requirement-index-toolbar {
+				grid-template-columns: 1fr;
+			}
+
+			.requirement-index-filter-group {
 				justify-content: flex-start;
 			}
 
-			.hero-actions {
+			.requirement-index-header {
+				grid-template-columns: 1fr;
+			}
+
+			.requirement-index-meta {
 				justify-content: flex-start;
 			}
 
-			.section-heading-row {
+			.hero-actions,
+			.section-actions,
+			.requirement-detail-header {
+				justify-content: flex-start;
+			}
+
+			.requirement-detail-header {
 				flex-direction: column;
 			}
 		}
@@ -843,6 +886,10 @@ class SpecificationCustomDocument implements vscode.CustomDocument {
 	private _panel: vscode.WebviewPanel | undefined;
 
 	private _watcher: vscode.FileSystemWatcher | undefined;
+
+	private _webviewReady = false;
+
+	private readonly _pendingRevealCardPaths = new Set<string>();
 
 	public constructor(
 		workspaceFolder: vscode.WorkspaceFolder,
@@ -887,9 +934,11 @@ class SpecificationCustomDocument implements vscode.CustomDocument {
 
 	public attachWebviewPanel(panel: vscode.WebviewPanel): void {
 		this._panel = panel;
+		this._webviewReady = false;
 		panel.onDidDispose(() => {
 			if (this._panel === panel) {
 				this._panel = undefined;
+				this._webviewReady = false;
 			}
 		});
 	}
@@ -937,9 +986,35 @@ class SpecificationCustomDocument implements vscode.CustomDocument {
 		return this._panel?.webview.postMessage(message);
 	}
 
+	public markWebviewReady(): void {
+		this._webviewReady = true;
+	}
+
+	public async revealCard(cardPath: string): Promise<void> {
+		this._pendingRevealCardPaths.add(cardPath);
+		await this.flushPendingReveals();
+	}
+
+	public async flushPendingReveals(): Promise<void> {
+		if (!this._webviewReady || !this._panel || this._pendingRevealCardPaths.size === 0) {
+			return;
+		}
+
+		const pendingPaths = Array.from(this._pendingRevealCardPaths);
+		this._pendingRevealCardPaths.clear();
+
+		for (const cardPath of pendingPaths) {
+			await this._panel.webview.postMessage({
+				type: 'reveal',
+				cardPath
+			});
+		}
+	}
+
 	public dispose(): void {
 		this._watcher?.dispose();
 		this._panel = undefined;
+		this.provider.releaseDocument(this.uri);
 	}
 
 	private createWatcher(): vscode.FileSystemWatcher {

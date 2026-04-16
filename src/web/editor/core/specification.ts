@@ -12,6 +12,8 @@ export interface ValidationIssue {
 	readonly message: string;
 }
 
+export type RequirementCoverageStatus = 'covered' | 'partial' | 'missing';
+
 export interface SpecificationRequirement {
 	id?: string;
 	title?: string;
@@ -20,6 +22,21 @@ export interface SpecificationRequirement {
 	trace?: string[];
 	notes?: string[];
 	[key: string]: unknown;
+}
+
+export interface RequirementCoverageSummary {
+	readonly status: RequirementCoverageStatus;
+	readonly coverageCount: number;
+	readonly traceCount: number;
+	readonly notesCount: number;
+}
+
+export interface SpecificationCoverageSummary {
+	readonly totalRequirements: number;
+	readonly coveredCount: number;
+	readonly partialCount: number;
+	readonly missingCount: number;
+	readonly requirementSummaries: RequirementCoverageSummary[];
 }
 
 export interface SpecificationDocument {
@@ -308,6 +325,30 @@ export function cloneSpecificationDocument<T extends SpecificationDocument | Spe
 	return JSON.parse(JSON.stringify(document)) as T;
 }
 
+export function summarizeRequirementCoverage(requirement: SpecificationRequirement): RequirementCoverageSummary {
+	const coverageCount = countMeaningfulStrings(requirement.coverage);
+	const traceCount = countMeaningfulStrings(requirement.trace);
+	const notesCount = countMeaningfulStrings(requirement.notes);
+
+	return {
+		status: coverageCount > 0 ? 'covered' : (traceCount > 0 || notesCount > 0 ? 'partial' : 'missing'),
+		coverageCount,
+		traceCount,
+		notesCount
+	};
+}
+
+export function summarizeSpecificationCoverage(document: SpecificationDocument): SpecificationCoverageSummary {
+	const requirementSummaries = (document.requirements ?? []).map((requirement) => summarizeRequirementCoverage(requirement));
+	return {
+		totalRequirements: requirementSummaries.length,
+		coveredCount: requirementSummaries.filter((summary) => summary.status === 'covered').length,
+		partialCount: requirementSummaries.filter((summary) => summary.status === 'partial').length,
+		missingCount: requirementSummaries.filter((summary) => summary.status === 'missing').length,
+		requirementSummaries
+	};
+}
+
 function serializeRequirement(requirement: SpecificationRequirement): Record<string, JsonValue> {
 	const output: Record<string, JsonValue> = {};
 
@@ -348,6 +389,14 @@ function canonicalizeUnknownValue(value: unknown): JsonValue {
 	}
 
 	return value as JsonValue;
+}
+
+function countMeaningfulStrings(value: string[] | undefined): number {
+	if (!Array.isArray(value)) {
+		return 0;
+	}
+
+	return value.filter((item) => typeof item === 'string' && item.trim().length > 0).length;
 }
 
 function appendStringField(target: Record<string, JsonValue>, key: string, value: string | undefined): void {

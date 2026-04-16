@@ -117,6 +117,19 @@
       "id": "REQ-VSCE-EDITOR-0018",
       "title": "Surface validation at the smallest applicable scope",
       "statement": "The editor MUST present validation failures at the smallest relevant scope, using inline field feedback for field-local problems and document-level feedback for cross-field or document-shape problems."
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0019",
+      "title": "Present a derived coverage summary",
+      "statement": "The editor MUST present a derived coverage summary for the specification that classifies each requirement as Covered when it has at least one `coverage` entry, Partial when it has no `coverage` entries but does have `trace` or `notes` entries, and Missing when it has no `coverage`, `trace`, or `notes` entries.",
+      "notes": [
+        "The coverage summary is an editor view over existing requirement fields and does not add new persisted document data."
+      ]
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0020",
+      "title": "Support coverage drill-down",
+      "statement": "The editor MUST let the user drill into a requirement from the coverage summary and reveal that requirement's coverage, trace, and notes details."
     }
   ]
 }

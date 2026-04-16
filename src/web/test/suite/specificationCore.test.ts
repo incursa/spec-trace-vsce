@@ -5,6 +5,8 @@ import {
 	isSpecificationPath,
 	parseSpecificationDocument,
 	serializeSpecificationDocument,
+	summarizeRequirementCoverage,
+	summarizeSpecificationCoverage,
 	validateSpecificationDocument
 } from '../../editor/core/specification.js';
 
@@ -91,6 +93,90 @@ suite('Specification core', () => {
 		assert.ok(!serialized.includes('"related_artifacts"'));
 		assert.deepStrictEqual(payload.x_custom, { enabled: true, sequence: [2, 1] });
 		assert.strictEqual(payload.requirements[0].x_reviewed, true);
+	});
+
+	test('summarizes requirement coverage with trimmed string semantics', () => {
+		assert.deepStrictEqual(
+			summarizeRequirementCoverage({
+				coverage: ['   ', 'browser host'],
+				trace: ['  '],
+				notes: [''],
+			}),
+			{
+				status: 'covered',
+				coverageCount: 1,
+				traceCount: 0,
+				notesCount: 0
+			}
+		);
+
+		assert.deepStrictEqual(
+			summarizeRequirementCoverage({
+				coverage: [],
+				trace: ['trace evidence'],
+				notes: ['  note evidence  '],
+			}),
+			{
+				status: 'partial',
+				coverageCount: 0,
+				traceCount: 1,
+				notesCount: 1
+			}
+		);
+
+		assert.deepStrictEqual(
+			summarizeRequirementCoverage({
+				coverage: [],
+				trace: [],
+				notes: [],
+			}),
+			{
+				status: 'missing',
+				coverageCount: 0,
+				traceCount: 0,
+				notesCount: 0
+			}
+		);
+	});
+
+	test('summarizes specification coverage across requirement states', () => {
+		const summary = summarizeSpecificationCoverage({
+			requirements: [
+				{
+					coverage: ['browser host'],
+					trace: [],
+					notes: []
+				},
+				{
+					coverage: [],
+					trace: ['trace evidence'],
+					notes: []
+				},
+				{
+					coverage: [],
+					trace: [],
+					notes: []
+				},
+				{
+					coverage: ['   '],
+					trace: ['   '],
+					notes: ['note evidence']
+				}
+			]
+		});
+
+		assert.deepStrictEqual(summary, {
+			totalRequirements: 4,
+			coveredCount: 1,
+			partialCount: 2,
+			missingCount: 1,
+			requirementSummaries: [
+				{ status: 'covered', coverageCount: 1, traceCount: 0, notesCount: 0 },
+				{ status: 'partial', coverageCount: 0, traceCount: 1, notesCount: 0 },
+				{ status: 'missing', coverageCount: 0, traceCount: 0, notesCount: 0 },
+				{ status: 'partial', coverageCount: 0, traceCount: 0, notesCount: 1 }
+			]
+		});
 	});
 
 	test('reports duplicate ids and invalid requirement grammar', () => {
