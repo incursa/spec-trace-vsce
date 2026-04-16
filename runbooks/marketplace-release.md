@@ -14,9 +14,9 @@ That command currently verifies:
 
 - TypeScript compilation
 - ESLint
-- Web extension tests
-- Browser smoke tests
-- Production bundle generation
+- Production web bundle generation
+
+Note: the broader `npm test` suite and the custom editor smoke flow both use `vscode-test-web`, which depends on downloading a VS Code web test harness and can fail transiently due to upstream rate limits. The release gate intentionally avoids that external dependency and focuses on publishable output.
 
 ## Required Manifest Metadata
 
