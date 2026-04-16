@@ -763,6 +763,28 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 			align-self: start;
 		}
 
+		.supplemental-section-row {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) auto;
+			gap: 0.75rem;
+			align-items: start;
+			min-width: 0;
+			padding: 0.85rem;
+			border: 1px solid color-mix(in srgb, var(--vscode-panel-border, var(--inc-border-subtle, #d0d7de)) 70%, transparent);
+			border-radius: 0.75rem;
+			background: color-mix(in srgb, var(--vscode-editorWidget-background, var(--inc-surface-panel, #ffffff)) 92%, transparent);
+		}
+
+		.supplemental-section-fields {
+			display: grid;
+			gap: 0.75rem;
+			min-width: 0;
+		}
+
+		.supplemental-section-controls {
+			align-self: start;
+		}
+
 		.requirement-index-row {
 			display: grid;
 			gap: 0.45rem;
@@ -1010,6 +1032,10 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 			}
 
 			.list-row {
+				grid-template-columns: 1fr;
+			}
+
+			.supplemental-section-row {
 				grid-template-columns: 1fr;
 			}
 

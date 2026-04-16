@@ -24,6 +24,12 @@ export interface SpecificationRequirement {
 	[key: string]: unknown;
 }
 
+export interface SupplementalSection {
+	heading?: string;
+	content?: string;
+	[key: string]: unknown;
+}
+
 export interface RequirementCoverageSummary {
 	readonly status: RequirementCoverageStatus;
 	readonly coverageCount: number;
@@ -53,7 +59,7 @@ export interface SpecificationDocument {
 	tags?: string[];
 	related_artifacts?: string[];
 	open_questions?: string[];
-	supplemental_sections?: string[];
+	supplemental_sections?: SupplementalSection[];
 	requirements?: SpecificationRequirement[];
 	[key: string]: unknown;
 }
@@ -134,7 +140,7 @@ export function validateSpecificationDocument(value: unknown): ValidationIssue[]
 	validateStringArrayField(value.tags, 'tags', issues);
 	validateStringArrayField(value.related_artifacts, 'related_artifacts', issues, false);
 	validateStringArrayField(value.open_questions, 'open_questions', issues, false);
-	validateStringArrayField(value.supplemental_sections, 'supplemental_sections', issues, false);
+	validateSupplementalSectionArrayField(value.supplemental_sections, 'supplemental_sections', issues, false);
 
 	if (typeof value.artifact_type === 'string' && value.artifact_type.trim() !== 'specification') {
 		issues.push({
@@ -290,7 +296,7 @@ export function serializeSpecificationDocument(document: SpecificationDocument):
 	appendArrayField(output, 'tags', document.tags, { required: true });
 	appendArrayField(output, 'related_artifacts', document.related_artifacts);
 	appendArrayField(output, 'open_questions', document.open_questions);
-	appendArrayField(output, 'supplemental_sections', document.supplemental_sections);
+	appendUnknownArrayField(output, 'supplemental_sections', document.supplemental_sections);
 
 	output.requirements = Array.isArray(document.requirements)
 		? document.requirements.map((requirement) => serializeRequirement(requirement))
@@ -321,7 +327,7 @@ export function createEmptyRequirement(): SpecificationRequirement {
 	};
 }
 
-export function cloneSpecificationDocument<T extends SpecificationDocument | SpecificationRequirement>(document: T): T {
+export function cloneSpecificationDocument<T extends SpecificationDocument | SpecificationRequirement | SupplementalSection>(document: T): T {
 	return JSON.parse(JSON.stringify(document)) as T;
 }
 
@@ -428,6 +434,29 @@ function appendArrayField(
 	target[key] = value.map((item) => item);
 }
 
+function appendUnknownArrayField(
+	target: Record<string, JsonValue>,
+	key: string,
+	value: unknown[] | undefined,
+	options?: {
+		required?: boolean;
+	}
+): void {
+	if (!Array.isArray(value)) {
+		if (options?.required) {
+			target[key] = [];
+		}
+
+		return;
+	}
+
+	if (value.length === 0 && options?.required !== true) {
+		return;
+	}
+
+	target[key] = value.map((item) => canonicalizeUnknownValue(item));
+}
+
 function validateStringField(value: unknown, path: string, issues: ValidationIssue[]): void {
 	if (value === undefined || value === null) {
 		issues.push({
@@ -483,6 +512,60 @@ function validateStringArrayField(
 			issues.push({
 				path: `${path}[${index}]`,
 				message: 'Items cannot be empty.'
+			});
+		}
+	});
+}
+
+function validateSupplementalSectionArrayField(
+	value: unknown,
+	path: string,
+	issues: ValidationIssue[],
+	required = true
+): void {
+	if (value === undefined || value === null) {
+		if (required) {
+			issues.push({
+				path,
+				message: 'Missing required field.'
+			});
+		}
+
+		return;
+	}
+
+	if (!Array.isArray(value)) {
+		issues.push({
+			path,
+			message: 'Expected an array.'
+		});
+		return;
+	}
+
+	value.forEach((item, index) => {
+		const itemPath = `${path}[${index}]`;
+		if (!isPlainObject(item)) {
+			issues.push({
+				path: itemPath,
+				message: 'Expected an object with heading and content.'
+			});
+			return;
+		}
+
+		validateStringField(item.heading, `${itemPath}.heading`, issues);
+		validateStringField(item.content, `${itemPath}.content`, issues);
+
+		if (typeof item.heading === 'string' && item.heading.trim().length === 0) {
+			issues.push({
+				path: `${itemPath}.heading`,
+				message: 'heading cannot be empty.'
+			});
+		}
+
+		if (typeof item.content === 'string' && item.content.trim().length === 0) {
+			issues.push({
+				path: `${itemPath}.content`,
+				message: 'content cannot be empty.'
 			});
 		}
 	});

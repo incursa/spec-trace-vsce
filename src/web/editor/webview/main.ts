@@ -11,6 +11,7 @@ import {
 	summarizeSpecificationCoverage,
 	SpecificationDocument,
 	SpecificationRequirement,
+	SupplementalSection,
 	ValidationIssue,
 	validateSpecificationDocument
 } from '../core/specification.js';
@@ -83,7 +84,7 @@ let requirementCompactRows = true;
 let expandedRequirementRowPaths = new Set<string>();
 
 const statusOptions = ['draft', 'review', 'approved', 'active', 'deprecated', 'archived'];
-type TopLevelListField = 'tags' | 'related_artifacts' | 'open_questions' | 'supplemental_sections';
+type TopLevelListField = 'tags' | 'related_artifacts' | 'open_questions';
 type RequirementViewMode = 'index' | 'view' | 'edit';
 type RequirementIndexFilter = 'all' | 'issues' | 'missing' | 'partial' | 'covered';
 type RequirementSortKey = 'file' | 'id' | 'title';
@@ -387,16 +388,10 @@ function renderEditor(): void {
 					addLabel: 'Add question'
 				}
 			),
-			createTopLevelListCard(
+			createSupplementalSectionsCard(
 				'Supplemental sections',
-				'Repeatable text blocks that round out the document.',
-				'supplemental_sections',
-				currentDocument?.supplemental_sections ?? [],
-				{
-					multiline: true,
-					placeholder: 'Section text',
-					addLabel: 'Add section'
-				}
+				'Structured supporting sections with a heading and longer content block.',
+				currentDocument?.supplemental_sections ?? []
 			)
 		);
 	}
@@ -1082,6 +1077,22 @@ function createTopLevelListCard(
 			className: `${fieldName}-card`,
 			validationPath: fieldName,
 			cardPath: fieldName,
+			open: false
+		}
+	);
+}
+
+function createSupplementalSectionsCard(title: string, description: string, items: SupplementalSection[]): HTMLElement {
+	const body = createSupplementalSectionsEditor(items, description);
+	const itemLabel = items.length === 1 ? '1 section' : `${items.length} sections`;
+	return createCollapsibleCard(
+		title,
+		itemLabel,
+		body,
+		{
+			className: 'supplemental_sections-card',
+			validationPath: 'supplemental_sections',
+			cardPath: 'supplemental_sections',
 			open: false
 		}
 	);
@@ -2180,6 +2191,120 @@ function createListEditor(
 	return field;
 }
 
+function createSupplementalSectionsEditor(items: SupplementalSection[], hintText: string): HTMLElement {
+	const field = document.createElement('inc-field');
+	field.className = 'list-field wide supplemental-sections-field';
+	field.setAttribute('dense', '');
+	field.dataset.validationPath = 'supplemental_sections';
+
+	const label = document.createElement('div');
+	label.slot = 'label';
+	label.className = 'inc-form__label';
+	label.textContent = 'Supplemental sections';
+
+	const hint = document.createElement('p');
+	hint.slot = 'hint';
+	hint.className = 'inc-form__hint';
+	hint.textContent = hintText;
+
+	const control = document.createElement('div');
+	control.slot = 'control';
+	control.className = 'list-field__control inc-form__control';
+
+	const itemsContainer = document.createElement('div');
+	itemsContainer.className = 'requirements-list supplemental-sections-list';
+
+	items.forEach((item, index) => {
+		itemsContainer.append(createSupplementalSectionRow(items, index, item));
+	});
+
+	const addButton = createActionButton('Add section', 'Add a supplemental section entry', () => {
+		getSupplementalSections().push(createEmptySupplementalSection());
+		setCardExpanded('supplemental_sections', true);
+		commitCurrentDocument(true);
+		renderEditor();
+		forceCardOpenAfterRender('supplemental_sections');
+		refreshChrome();
+		renderValidationState();
+	}, { variant: 'secondary', size: 'sm' });
+
+	const actions = createButtonToolbar('Supplemental section actions', 'section-actions');
+	actions.append(addButton);
+
+	control.append(itemsContainer, actions);
+	field.append(label, hint, control, createErrorRegion());
+	return field;
+}
+
+function createSupplementalSectionRow(
+	items: SupplementalSection[],
+	index: number,
+	section: SupplementalSection
+): HTMLElement {
+	const rowPath = `supplemental_sections[${index}]`;
+	const row = document.createElement('div');
+	row.className = 'supplemental-section-row';
+	row.dataset.validationPath = rowPath;
+
+	const fields = document.createElement('div');
+	fields.className = 'supplemental-section-fields';
+
+	const headingField = document.createElement('inc-field');
+	headingField.className = 'editor-field supplemental-section-heading-field';
+	headingField.setAttribute('label', 'Heading');
+	headingField.setAttribute('dense', '');
+	headingField.dataset.validationPath = `${rowPath}.heading`;
+
+	const headingInput = document.createElement('input');
+	headingInput.className = 'inc-form__control editor-field__control';
+	headingInput.slot = 'control';
+	headingInput.placeholder = 'Section heading';
+	headingInput.value = stringValue(section.heading);
+	headingInput.spellcheck = true;
+	headingInput.addEventListener('input', () => {
+		section.heading = headingInput.value;
+		commitCurrentDocument();
+	});
+	headingField.append(headingInput, createErrorRegion());
+
+	const contentField = document.createElement('inc-field');
+	contentField.className = 'editor-field editor-field--wide supplemental-section-content-field';
+	contentField.setAttribute('label', 'Content');
+	contentField.setAttribute('dense', '');
+	contentField.dataset.validationPath = `${rowPath}.content`;
+
+	const contentInput = document.createElement('textarea');
+	contentInput.className = 'inc-form__control editor-field__control editor-field__control--textarea';
+	contentInput.slot = 'control';
+	contentInput.placeholder = 'Section content';
+	contentInput.value = stringValue(section.content);
+	contentInput.spellcheck = true;
+	contentInput.setAttribute('rows', '6');
+	contentInput.addEventListener('input', () => {
+		section.content = contentInput.value;
+		commitCurrentDocument();
+	});
+	contentField.append(contentInput, createErrorRegion());
+
+	fields.append(headingField, contentField);
+
+	const controls = document.createElement('div');
+	controls.className = 'list-row__controls supplemental-section-controls';
+	controls.append(
+		createIconButton('×', 'Remove supplemental section', () => {
+			getSupplementalSections().splice(index, 1);
+			commitCurrentDocument(true);
+			renderEditor();
+			forceCardOpenAfterRender('supplemental_sections');
+			refreshChrome();
+			renderValidationState();
+		}, false, 'outline-danger')
+	);
+
+	row.append(fields, controls);
+	return row;
+}
+
 function createListRow(
 	fieldPath: string,
 	items: string[],
@@ -2902,7 +3027,7 @@ function normalizeEditableDocument(document: SpecificationDocument): Specificati
 	normalized.tags = normalizeStringArray(normalized.tags);
 	normalized.related_artifacts = normalizeStringArray(normalized.related_artifacts);
 	normalized.open_questions = normalizeStringArray(normalized.open_questions);
-	normalized.supplemental_sections = normalizeStringArray(normalized.supplemental_sections);
+	normalized.supplemental_sections = normalizeSupplementalSectionArray(normalized.supplemental_sections);
 	normalized.requirements = Array.isArray(normalized.requirements)
 		? (normalized.requirements as unknown[]).map((requirement: unknown) => normalizeRequirement(requirement))
 		: [];
@@ -2930,6 +3055,30 @@ function normalizeStringArray(value: string[] | undefined): string[] {
 	}
 
 	return value.map((item) => (typeof item === 'string' ? item : ''));
+}
+
+function normalizeSupplementalSectionArray(value: SupplementalSection[] | undefined): SupplementalSection[] {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+
+	return value.map((item) => {
+		if (!isPlainObject(item)) {
+			return createEmptySupplementalSection();
+		}
+
+		const normalized = cloneSpecificationDocument(item as SupplementalSection);
+		normalized.heading = stringValue(normalized.heading);
+		normalized.content = stringValue(normalized.content);
+		return normalized;
+	});
+}
+
+function createEmptySupplementalSection(): SupplementalSection {
+	return {
+		heading: '',
+		content: ''
+	};
 }
 
 function stringValue(value: unknown): string {
@@ -2999,12 +3148,15 @@ function getTopLevelArray(fieldName: TopLevelListField): string[] {
 		case 'open_questions':
 			currentDocument!.open_questions = currentDocument!.open_questions ?? [];
 			return currentDocument!.open_questions;
-		case 'supplemental_sections':
-			currentDocument!.supplemental_sections = currentDocument!.supplemental_sections ?? [];
-			return currentDocument!.supplemental_sections;
 	}
 
 	throw new Error(`Unsupported top-level list field: ${fieldName}`);
+}
+
+function getSupplementalSections(): SupplementalSection[] {
+	ensureEditableDocument();
+	currentDocument!.supplemental_sections = currentDocument!.supplemental_sections ?? [];
+	return currentDocument!.supplemental_sections;
 }
 
 function moveRequirement(currentIndex: number, targetIndex: number): void {

@@ -52,6 +52,54 @@ suite('Specification core', () => {
 		assert.strictEqual(isCanonicalSpecificationDocument(parsed.document, 'specs/requirements/spec-trace-vsce/SPEC-VSCE-EDITOR.json'), true);
 	});
 
+	test('accepts structured supplemental sections and preserves them on serialization', () => {
+		const document = {
+			artifact_id: 'SPEC-VSCE-EDITOR',
+			artifact_type: 'specification',
+			title: 'Spec Trace Spec File Custom Editor',
+			domain: 'spec-trace-vsce',
+			capability: 'spec-file-editor',
+			status: 'draft',
+			owner: 'spec-trace-vsce-maintainers',
+			purpose: 'Define the browser-safe custom editor for canonical Spec Trace specification files.',
+			scope: 'This specification covers opening, viewing, editing, validating, and saving canonical specification JSON files in a VS Code web extension.',
+			context: 'The first extension deliverable should let authors edit existing specification files directly in browser-hosted VS Code.',
+			tags: ['spec-trace'],
+			supplemental_sections: [
+				{
+					heading: 'Decision Summary',
+					content: 'Pipeline outside, reducer inside.',
+					x_origin: 'imported'
+				}
+			],
+			requirements: [
+				{
+					id: 'REQ-VSCE-EDITOR-0001',
+					title: 'Run in the web extension host',
+					statement: 'The extension MUST run in the VS Code web extension host.',
+					coverage: [],
+					trace: [],
+					notes: []
+				}
+			]
+		};
+
+		const issues = validateSpecificationDocument(document);
+		assert.deepStrictEqual(issues, []);
+
+		const payload = JSON.parse(serializeSpecificationDocument(document)) as {
+			supplemental_sections: Array<{ heading: string; content: string; x_origin: string }>;
+		};
+
+		assert.deepStrictEqual(payload.supplemental_sections, [
+			{
+				content: 'Pipeline outside, reducer inside.',
+				heading: 'Decision Summary',
+				x_origin: 'imported'
+			}
+		]);
+	});
+
 	test('serializes deterministically and preserves extension fields', () => {
 		const serialized = serializeSpecificationDocument({
 			artifact_id: 'SPEC-VSCE-EDITOR',
