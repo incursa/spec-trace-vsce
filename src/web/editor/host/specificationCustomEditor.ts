@@ -425,12 +425,21 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 
 		.editor-page {
 			display: block;
+			--editor-content-max-width: 1400px;
+		}
+
+		.editor-hero {
+			display: block;
+			width: 100%;
+			max-width: var(--editor-content-max-width);
+			margin: 0 auto;
 		}
 
 		.editor-root {
 			display: grid;
 			gap: 1.25rem;
-			max-width: 1400px;
+			width: 100%;
+			max-width: var(--editor-content-max-width);
 			margin: 0 auto;
 		}
 

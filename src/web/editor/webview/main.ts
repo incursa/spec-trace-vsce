@@ -410,6 +410,7 @@ function renderEditor(): void {
 
 function createHero(): HTMLElement {
 	const header = document.createElement('inc-page-header');
+	header.className = 'editor-hero';
 	header.setAttribute('dense', '');
 	header.setAttribute('variant', 'detail');
 
