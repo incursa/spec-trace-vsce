@@ -28,6 +28,8 @@ suite('Repository management core', () => {
 		assert.ok(plan.missingDirectories.includes('.workbench'));
 		assert.ok(plan.missingFiles.some((file) => file.path === '.workbench/config.json'));
 		assert.ok(plan.missingFiles.some((file) => file.path === 'specs/requirements/_index.md'));
+		assert.ok(plan.missingFiles.some((file) => file.path === 'specs/requirements/getting-started/_index.md'));
+		assert.ok(plan.missingFiles.some((file) => file.path === 'specs/requirements/getting-started/SPEC-GETTING-STARTED.json'));
 	});
 
 	test('omits existing scaffold paths from the bootstrap plan', () => {
@@ -44,6 +46,7 @@ suite('Repository management core', () => {
 		assert.ok(!plan.missingDirectories.includes('.workbench'));
 		assert.ok(!plan.missingFiles.some((file) => file.path === '.workbench/config.json'));
 		assert.ok(!plan.missingFiles.some((file) => file.path === 'specs/requirements/_index.md'));
+		assert.ok(!plan.missingFiles.some((file) => file.path === 'specs/requirements/getting-started/SPEC-GETTING-STARTED.json'));
 	});
 
 	test('renders a deterministic starter specification artifact', () => {
@@ -83,5 +86,24 @@ suite('Repository management core', () => {
 		assert.ok(rendered.content.includes('- Verifies: `REQ-VSCE-MANAGEMENT-0001`'));
 		assert.ok(rendered.content.includes('- Verifies: `REQ-VSCE-MANAGEMENT-0002`'));
 		assert.ok(rendered.domainIndexContent.includes('spec-trace-vsce'));
+	});
+
+	test('bootstrapped starter specification is minimal valid canonical JSON', () => {
+		const plan = createBootstrapPlan([]);
+		const starterSpec = plan.missingFiles.find((file) => file.path === 'specs/requirements/getting-started/SPEC-GETTING-STARTED.json');
+
+		assert.ok(starterSpec, 'Expected bootstrap to include a starter specification.');
+		const payload = JSON.parse(starterSpec!.content) as {
+			artifact_id: string;
+			domain: string;
+			capability: string;
+			requirements: Array<{ id: string; statement: string }>;
+		};
+
+		assert.strictEqual(payload.artifact_id, 'SPEC-GETTING-STARTED');
+		assert.strictEqual(payload.domain, 'getting-started');
+		assert.strictEqual(payload.capability, 'getting-started');
+		assert.strictEqual(payload.requirements[0].id, 'REQ-GETTING-STARTED-0001');
+		assert.ok(payload.requirements[0].statement.includes('MUST'));
 	});
 });

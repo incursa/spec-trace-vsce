@@ -26,7 +26,31 @@ export interface CreateArtifactCommandOptions {
 	readonly domain?: string;
 }
 
+interface FileSystemLike {
+	stat(uri: vscode.Uri): Thenable<vscode.FileStat>;
+	createDirectory(uri: vscode.Uri): Thenable<void>;
+	writeFile(uri: vscode.Uri, content: Uint8Array): Thenable<void>;
+	readDirectory(uri: vscode.Uri): Thenable<readonly [string, vscode.FileType][]>;
+}
+
+interface WindowLike {
+	showErrorMessage(message: string, ...items: string[]): Thenable<string | undefined>;
+	showInformationMessage(message: string, ...items: string[]): Thenable<string | undefined>;
+	showInputBox(options?: vscode.InputBoxOptions): Thenable<string | undefined>;
+	showQuickPick<T extends vscode.QuickPickItem>(items: readonly T[] | Thenable<readonly T[]>, options?: vscode.QuickPickOptions): Thenable<T | undefined>;
+}
+
+interface CommandsLike {
+	executeCommand<T = unknown>(command: string, ...rest: unknown[]): Thenable<T>;
+}
+
 export class RepositoryManager {
+	public constructor(
+		private readonly fileSystem: FileSystemLike = vscode.workspace.fs,
+		private readonly windowApi: WindowLike = vscode.window,
+		private readonly commandsApi: CommandsLike = vscode.commands
+	) {}
+
 	public async detectRepositoryState(workspaceFolder = this.getWorkspaceFolder()): Promise<RepositoryState> {
 		if (!workspaceFolder) {
 			return 'missing';
@@ -38,19 +62,19 @@ export class RepositoryManager {
 
 	public async initializeRepository(workspaceFolder = this.getWorkspaceFolder()): Promise<BootstrapPlan | undefined> {
 		if (!workspaceFolder) {
-			void vscode.window.showErrorMessage('Open a workspace folder before initializing Spec Trace.');
+			void this.windowApi.showErrorMessage('Open a workspace folder before initializing Spec Trace.');
 			return undefined;
 		}
 
 		const existingPaths = await this.collectExistingScaffoldPaths(workspaceFolder);
 		const plan = createBootstrapPlan(existingPaths);
 		if (plan.missingDirectories.length === 0 && plan.missingFiles.length === 0) {
-			void vscode.window.showInformationMessage('Spec Trace scaffold is already present in this workspace.');
+			void this.windowApi.showInformationMessage('Spec Trace scaffold is already present in this workspace.');
 			return plan;
 		}
 
 		for (const relativePath of plan.missingDirectories) {
-			await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(workspaceFolder.uri, ...relativePath.split('/')));
+			await this.fileSystem.createDirectory(vscode.Uri.joinPath(workspaceFolder.uri, ...relativePath.split('/')));
 		}
 
 		for (const file of plan.missingFiles) {
@@ -59,45 +83,58 @@ export class RepositoryManager {
 				continue;
 			}
 
-			await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(workspaceFolder.uri, ...dirname(file.path).split('/')));
-			await vscode.workspace.fs.writeFile(targetUri, new TextEncoder().encode(file.content));
+			await this.fileSystem.createDirectory(vscode.Uri.joinPath(workspaceFolder.uri, ...dirname(file.path).split('/')));
+			await this.fileSystem.writeFile(targetUri, new TextEncoder().encode(file.content));
 		}
 
 		return plan;
 	}
 
-	public async promptAndInitializeRepository(): Promise<void> {
-		const plan = await this.initializeRepository();
+	public async promptAndInitializeRepository(workspaceFolder = this.getWorkspaceFolder()): Promise<void> {
+		const plan = await this.initializeRepository(workspaceFolder);
 		if (!plan) {
 			return;
 		}
 
-		const selection = await vscode.window.showInformationMessage(
+		const starterSpecificationPath = this.findStarterSpecificationPath(plan);
+
+		const selection = await this.windowApi.showInformationMessage(
 			'Spec Trace scaffold initialized.',
+			...(starterSpecificationPath ? ['Open starter spec'] : []),
 			'Create artifact',
 			'Open Explorer'
 		);
 
+		if (selection === 'Open starter spec' && starterSpecificationPath) {
+			const workspaceFolder = this.getWorkspaceFolder();
+			if (!workspaceFolder) {
+				return;
+			}
+
+			const starterUri = vscode.Uri.joinPath(workspaceFolder.uri, ...starterSpecificationPath.split('/'));
+			await this.commandsApi.executeCommand('vscode.openWith', starterUri, SPECIFICATION_CUSTOM_EDITOR_VIEW_TYPE);
+			return;
+		}
+
 		if (selection === 'Create artifact') {
-			await this.promptAndCreateArtifact();
+			await this.promptAndCreateArtifact(undefined, workspaceFolder);
 			return;
 		}
 
 		if (selection === 'Open Explorer') {
-			await vscode.commands.executeCommand('spec-trace-vsce.openRepositoryExplorer');
+			await this.commandsApi.executeCommand('spec-trace-vsce.openRepositoryExplorer');
 		}
 	}
 
-	public async promptAndCreateArtifact(options?: CreateArtifactCommandOptions): Promise<void> {
-		const workspaceFolder = this.getWorkspaceFolder();
+	public async promptAndCreateArtifact(options?: CreateArtifactCommandOptions, workspaceFolder = this.getWorkspaceFolder()): Promise<void> {
 		if (!workspaceFolder) {
-			void vscode.window.showErrorMessage('Open a workspace folder before creating Spec Trace artifacts.');
+			void this.windowApi.showErrorMessage('Open a workspace folder before creating Spec Trace artifacts.');
 			return;
 		}
 
 		const initialState = await this.detectRepositoryState(workspaceFolder);
 		if (initialState === 'missing') {
-			const selection = await vscode.window.showInformationMessage(
+			const selection = await this.windowApi.showInformationMessage(
 				'Spec Trace scaffold is missing. Initialize the repository before creating artifacts.',
 				'Initialize repository',
 				'Cancel'
@@ -130,10 +167,10 @@ export class RepositoryManager {
 		}
 
 		const capability = kind === 'specification'
-			? await vscode.window.showInputBox({
-				prompt: 'Enter the capability identifier.',
-				value: title.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'capability',
-				ignoreFocusOut: true,
+				? await this.windowApi.showInputBox({
+					prompt: 'Enter the capability identifier.',
+					value: title.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'capability',
+					ignoreFocusOut: true,
 				validateInput: (value) => value.trim().length === 0 ? 'Capability is required.' : undefined
 			})
 			: undefined;
@@ -144,10 +181,10 @@ export class RepositoryManager {
 
 		const traceLinks = kind === 'specification'
 			? []
-			: this.parseTraceLinks(await vscode.window.showInputBox({
-				prompt: 'Optional trace links (comma-separated requirement or artifact ids).',
-				placeHolder: 'REQ-EXAMPLE-0001, ARC-EXAMPLE',
-				ignoreFocusOut: true
+				: this.parseTraceLinks(await this.windowApi.showInputBox({
+					prompt: 'Optional trace links (comma-separated requirement or artifact ids).',
+					placeHolder: 'REQ-EXAMPLE-0001, ARC-EXAMPLE',
+					ignoreFocusOut: true
 			}));
 
 		const rendered = renderArtifact({
@@ -160,7 +197,7 @@ export class RepositoryManager {
 
 		const created = await this.writeRenderedArtifact(workspaceFolder, rendered);
 		if (!created) {
-			void vscode.window.showErrorMessage(`A Spec Trace artifact already exists at ${rendered.relativePath}. Choose a different title or domain.`);
+			void this.windowApi.showErrorMessage(`A Spec Trace artifact already exists at ${rendered.relativePath}. Choose a different title or domain.`);
 			return;
 		}
 
@@ -185,7 +222,7 @@ export class RepositoryManager {
 	}
 
 	private async promptForArtifactKind(): Promise<ArtifactKind | undefined> {
-		const selection = await vscode.window.showQuickPick(
+		const selection = await this.windowApi.showQuickPick(
 			[
 				{ label: 'Specification', value: 'specification' as const, description: 'Create a specification JSON artifact.' },
 				{ label: 'Architecture', value: 'architecture' as const, description: 'Create an architecture markdown artifact.' },
@@ -206,7 +243,7 @@ export class RepositoryManager {
 			? normalizeDomain(suggestedDomain)
 			: await this.deriveSuggestedDomain(kind);
 
-		const value = await vscode.window.showInputBox({
+		const value = await this.windowApi.showInputBox({
 			prompt: `Enter the domain for the ${this.labelForArtifactKind(kind).toLowerCase()}.`,
 			value: defaultDomain,
 			ignoreFocusOut: true,
@@ -224,7 +261,7 @@ export class RepositoryManager {
 
 		const rootUri = vscode.Uri.joinPath(workspaceFolder.uri, ...this.rootPathForKind(kind).split('/'));
 		try {
-			const entries = await vscode.workspace.fs.readDirectory(rootUri);
+			const entries = await this.fileSystem.readDirectory(rootUri);
 			const firstDomain = entries.find(([, type]) => type === vscode.FileType.Directory)?.[0];
 			return firstDomain ? normalizeDomain(firstDomain) : (kind === 'specification' ? 'default' : 'wb');
 		} catch {
@@ -246,7 +283,7 @@ export class RepositoryManager {
 	}
 
 	private async promptForRequiredInput(title: string, prompt: string): Promise<string | undefined> {
-		return vscode.window.showInputBox({
+		return this.windowApi.showInputBox({
 			title,
 			prompt,
 			ignoreFocusOut: true,
@@ -263,19 +300,19 @@ export class RepositoryManager {
 	}
 
 	private async writeRenderedArtifact(workspaceFolder: vscode.WorkspaceFolder, rendered: RenderedArtifact): Promise<boolean> {
-		const domainIndexUri = vscode.Uri.joinPath(workspaceFolder.uri, ...rendered.domainIndexPath.split('/'));
-		if (!await this.pathExists(domainIndexUri)) {
-			await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(workspaceFolder.uri, ...dirname(rendered.domainIndexPath).split('/')));
-			await vscode.workspace.fs.writeFile(domainIndexUri, new TextEncoder().encode(rendered.domainIndexContent));
-		}
-
 		const artifactUri = vscode.Uri.joinPath(workspaceFolder.uri, ...rendered.relativePath.split('/'));
 		if (await this.pathExists(artifactUri)) {
 			return false;
 		}
 
-		await vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(workspaceFolder.uri, ...dirname(rendered.relativePath).split('/')));
-		await vscode.workspace.fs.writeFile(artifactUri, new TextEncoder().encode(rendered.content));
+		const domainIndexUri = vscode.Uri.joinPath(workspaceFolder.uri, ...rendered.domainIndexPath.split('/'));
+		if (!await this.pathExists(domainIndexUri)) {
+			await this.fileSystem.createDirectory(vscode.Uri.joinPath(workspaceFolder.uri, ...dirname(rendered.domainIndexPath).split('/')));
+			await this.fileSystem.writeFile(domainIndexUri, new TextEncoder().encode(rendered.domainIndexContent));
+		}
+
+		await this.fileSystem.createDirectory(vscode.Uri.joinPath(workspaceFolder.uri, ...dirname(rendered.relativePath).split('/')));
+		await this.fileSystem.writeFile(artifactUri, new TextEncoder().encode(rendered.content));
 		return true;
 	}
 
@@ -286,11 +323,11 @@ export class RepositoryManager {
 	): Promise<void> {
 		const artifactUri = vscode.Uri.joinPath(workspaceFolder.uri, ...rendered.relativePath.split('/'));
 		if (kind === 'specification') {
-			await vscode.commands.executeCommand('vscode.openWith', artifactUri, SPECIFICATION_CUSTOM_EDITOR_VIEW_TYPE);
+			await this.commandsApi.executeCommand('vscode.openWith', artifactUri, SPECIFICATION_CUSTOM_EDITOR_VIEW_TYPE);
 			return;
 		}
 
-		await vscode.commands.executeCommand('vscode.open', artifactUri);
+		await this.commandsApi.executeCommand('vscode.open', artifactUri);
 	}
 
 	private labelForArtifactKind(kind: ArtifactKind): string {
@@ -312,11 +349,15 @@ export class RepositoryManager {
 
 	private async pathExists(uri: vscode.Uri): Promise<boolean> {
 		try {
-			await vscode.workspace.fs.stat(uri);
+			await this.fileSystem.stat(uri);
 			return true;
 		} catch {
 			return false;
 		}
+	}
+
+	private findStarterSpecificationPath(plan: BootstrapPlan): string | undefined {
+		return plan.missingFiles.find((file) => file.path.endsWith('.json') && file.path.includes('/getting-started/'))?.path;
 	}
 }
 

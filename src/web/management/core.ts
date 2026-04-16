@@ -126,6 +126,17 @@ const scaffoldFiles: ScaffoldFileTemplate[] = [
 	}
 ] as const;
 
+const bootstrapStarterFiles: ScaffoldFileTemplate[] = [
+	{
+		path: 'specs/requirements/getting-started/_index.md',
+		content: createDomainIndexContent('specification', 'getting-started')
+	},
+	{
+		path: 'specs/requirements/getting-started/SPEC-GETTING-STARTED.json',
+		content: renderBootstrapStarterSpecification()
+	}
+] as const;
+
 const requiredScaffoldPaths = new Set<string>([
 	...scaffoldDirectories,
 	...scaffoldFiles.map((file) => file.path)
@@ -137,6 +148,10 @@ export function getScaffoldDirectories(): readonly string[] {
 
 export function getScaffoldFiles(): readonly ScaffoldFileTemplate[] {
 	return scaffoldFiles;
+}
+
+export function getBootstrapStarterFiles(): readonly ScaffoldFileTemplate[] {
+	return bootstrapStarterFiles;
 }
 
 export function detectRepositoryState(existingPaths: Iterable<string>): RepositoryState {
@@ -151,10 +166,17 @@ export function detectRepositoryState(existingPaths: Iterable<string>): Reposito
 
 export function createBootstrapPlan(existingPaths: Iterable<string>): BootstrapPlan {
 	const normalized = new Set(Array.from(existingPaths, (path) => normalizePath(path)));
+	const state = detectRepositoryState(normalized);
+	const starterFiles = state === 'missing'
+		? bootstrapStarterFiles.filter((file) => !normalized.has(normalizePath(file.path)))
+		: [];
 	return {
-		state: detectRepositoryState(normalized),
+		state,
 		missingDirectories: scaffoldDirectories.filter((path) => !normalized.has(path)),
-		missingFiles: scaffoldFiles.filter((file) => !normalized.has(normalizePath(file.path)))
+		missingFiles: [
+			...scaffoldFiles.filter((file) => !normalized.has(normalizePath(file.path))),
+			...starterFiles
+		]
 	};
 }
 
@@ -416,4 +438,31 @@ function toUpperTokenSequence(value: string, fallback: string): string {
 function toKebabCase(value: string): string {
 	const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 	return normalized.length > 0 ? normalized : 'capability';
+}
+
+function renderBootstrapStarterSpecification(): string {
+	return serializeSpecificationDocument({
+		artifact_id: 'SPEC-GETTING-STARTED',
+		artifact_type: 'specification',
+		title: 'Getting Started Specification',
+		domain: 'getting-started',
+		capability: 'getting-started',
+		status: 'draft',
+		owner: 'getting-started-maintainers',
+		purpose: 'Define the initial starter specification created during Spec Trace bootstrap.',
+		scope: 'This specification covers the initial bootstrap path for a newly initialized Spec Trace repository.',
+		context: 'Created automatically by the Spec Trace VS Code extension during repository bootstrap.',
+		tags: ['spec-trace', 'getting-started', 'bootstrap'],
+		related_artifacts: [],
+		open_questions: [],
+		supplemental_sections: [],
+		requirements: [
+			{
+				id: 'REQ-GETTING-STARTED-0001',
+				title: 'Provide an initial starter specification',
+				statement: 'The repository MUST include an initial starter specification after bootstrap.',
+				notes: ['Revise or replace this starter artifact as domain requirements become concrete.']
+			}
+		]
+	});
 }

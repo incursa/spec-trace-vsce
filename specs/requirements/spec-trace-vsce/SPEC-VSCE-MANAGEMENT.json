@@ -1,0 +1,109 @@
+{
+  "artifact_id": "SPEC-VSCE-MANAGEMENT",
+  "artifact_type": "specification",
+  "title": "Spec Trace Repository Bootstrap and Artifact Management",
+  "domain": "spec-trace-vsce",
+  "capability": "repository-management",
+  "status": "draft",
+  "owner": "spec-trace-vsce-maintainers",
+  "tags": [
+    "spec-trace",
+    "vsce",
+    "web-extension",
+    "bootstrap",
+    "management"
+  ],
+  "related_artifacts": [
+    "ARC-VSCE-MANAGEMENT",
+    "WI-VSCE-MANAGEMENT",
+    "VER-VSCE-MANAGEMENT"
+  ],
+  "purpose": "Define browser-safe repository bootstrap and additive artifact management for Spec Trace repositories inside the VS Code extension.",
+  "scope": "This specification covers detecting missing or partial Spec Trace scaffold, making bootstrap the required first management step for an empty repository, initializing the canonical repository structure and minimal seed files, creating new specification, architecture, work-item, and verification artifacts from templates, and opening newly created artifacts in the appropriate VS Code surface. Rich structured editors for markdown artifacts, cross-repository template synchronization, generated content, and external helper processes are out of scope for this pass.",
+  "context": "The current extension can browse canonical artifacts and edit existing specification JSON files, but it assumes the repository already contains a usable Spec Trace scaffold. In a repository with no Spec Trace content, the extension should bootstrap the scaffold first, then allow artifact-specific authoring. Authors also need to create new trace artifacts without leaving VS Code, including architecture, work-item, and verification documents that are currently browse-only.",
+  "requirements": [
+    {
+      "id": "REQ-VSCE-MANAGEMENT-0001",
+      "title": "Detect missing repository scaffold",
+      "statement": "The extension MUST detect when the current workspace does not contain a recognizable Spec Trace repository scaffold and enter a bootstrap-first management state instead of assuming existing artifacts are present."
+    },
+    {
+      "id": "REQ-VSCE-MANAGEMENT-0002",
+      "title": "Bootstrap first in an empty repository",
+      "statement": "When repository state is `missing`, the extension MUST make bootstrap the first management action and MUST not route the user directly into artifact-specific creation flows until the initial scaffold has been created.",
+      "notes": [
+        "The empty-repository experience should foreground initialization rather than presenting create-specification or create-markdown flows first."
+      ]
+    },
+    {
+      "id": "REQ-VSCE-MANAGEMENT-0003",
+      "title": "Support partial repository scaffold",
+      "statement": "The extension MUST treat a partially populated Spec Trace repository as an additive management case and offer creation or repair of missing scaffold elements without requiring a destructive reinitialization.",
+      "notes": [
+        "A repository may already contain some canonical folders or documents and still need managed setup for the missing pieces."
+      ]
+    },
+    {
+      "id": "REQ-VSCE-MANAGEMENT-0004",
+      "title": "Confine management to the current workspace root",
+      "statement": "Bootstrap, file discovery, template instantiation, and artifact creation MUST be confined to the current workspace repository root."
+    },
+    {
+      "id": "REQ-VSCE-MANAGEMENT-0005",
+      "title": "Initialize canonical scaffold and seed files",
+      "statement": "The initialization flow MUST create any missing canonical scaffold directories and the minimal seed files defined by the extension's bundled Spec Trace templates, including the core `specs` subdirectories and `.workbench/config.json` needed for repository-local operation.",
+      "notes": [
+        "The initial scaffold should cover requirements, architecture, work-items, verification, generated, templates, and schemas areas.",
+        "Seed files should be minimal valid stubs rather than zero-byte placeholders when the file type requires structure."
+      ]
+    },
+    {
+      "id": "REQ-VSCE-MANAGEMENT-0006",
+      "title": "Use bundled templates for managed creation",
+      "statement": "The extension MUST create new specification, architecture, work-item, and verification artifacts from deterministic templates bundled with the extension rather than from blank files or external helper services."
+    },
+    {
+      "id": "REQ-VSCE-MANAGEMENT-0007",
+      "title": "Collect only artifact-specific creation input",
+      "statement": "The creation flow MUST collect only the minimum artifact-specific metadata needed to instantiate the selected template, with sensible defaults for values that can be derived locally."
+    },
+    {
+      "id": "REQ-VSCE-MANAGEMENT-0008",
+      "title": "Write artifacts to canonical locations",
+      "statement": "The extension MUST write each created artifact to its canonical location and file naming pattern under `specs/requirements/<domain>/`, `specs/architecture/<domain>/`, `specs/work-items/<domain>/`, or `specs/verification/<domain>/` as appropriate for the selected artifact type."
+    },
+    {
+      "id": "REQ-VSCE-MANAGEMENT-0009",
+      "title": "Seed missing domain navigation files",
+      "statement": "When a creation flow targets a domain directory that does not yet exist for the selected artifact class, the extension MUST create the directory and a minimal `_index.md` navigation file for that domain as part of the same additive operation."
+    },
+    {
+      "id": "REQ-VSCE-MANAGEMENT-0010",
+      "title": "Preserve existing repository content",
+      "statement": "The extension MUST avoid overwriting existing files during bootstrap or artifact creation and MUST require the user to choose a different target when the derived path already exists.",
+      "notes": [
+        "This protects manually curated artifacts and allows management features to remain safely additive."
+      ]
+    },
+    {
+      "id": "REQ-VSCE-MANAGEMENT-0011",
+      "title": "Prepopulate trace-aware artifact content",
+      "statement": "When creating architecture, work-item, or verification artifacts, the extension MUST allow the author to supply related requirement or artifact identifiers and MUST write those identifiers into the generated document's trace-link sections."
+    },
+    {
+      "id": "REQ-VSCE-MANAGEMENT-0012",
+      "title": "Open created artifacts in the appropriate surface",
+      "statement": "After creating an artifact, the extension MUST open the new file in the most appropriate existing VS Code surface, using the structured custom editor for specification JSON and the standard text editor for markdown artifacts."
+    },
+    {
+      "id": "REQ-VSCE-MANAGEMENT-0013",
+      "title": "Expose management entry points in extension UI",
+      "statement": "The extension MUST expose repository bootstrap and artifact creation entry points through VS Code-native management surfaces, including command palette actions and explorer-driven actions or empty states."
+    },
+    {
+      "id": "REQ-VSCE-MANAGEMENT-0014",
+      "title": "Remain browser-host safe",
+      "statement": "The management flows MUST run in the VS Code web extension host without requiring Node-only APIs, native binaries, or a separate local helper service."
+    }
+  ]
+}
