@@ -93,7 +93,7 @@
     {
       "id": "REQ-VSCE-MANAGEMENT-0012",
       "title": "Open created artifacts in the appropriate surface",
-      "statement": "After creating an artifact, the extension MUST open the new file in the most appropriate existing VS Code surface, using the structured custom editor for specification JSON and the standard text editor for markdown artifacts."
+      "statement": "After creating an artifact, the extension MUST open the new file in the most appropriate available VS Code surface, using the structured custom editor for specification JSON and a managed markdown authoring surface for supported canonical markdown artifacts when one is available, with the standard text editor as the fallback."
     },
     {
       "id": "REQ-VSCE-MANAGEMENT-0013",
