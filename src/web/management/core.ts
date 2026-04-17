@@ -1,4 +1,5 @@
 import { serializeSpecificationDocument } from '../editor/core/specification.js';
+import { createManagedMarkdownTemplate, type ManagedMarkdownArtifactType } from '../editor/markdown/core.js';
 
 export type RepositoryState = 'missing' | 'partial' | 'ready';
 export type ArtifactKind = 'specification' | 'architecture' | 'workItem' | 'verification';
@@ -339,30 +340,18 @@ function renderMarkdownArtifact(
 	const prefix = getArtifactPrefix(kind);
 	const artifactId = `${prefix}-${toUpperTokenSequence(title, fallbackTitleForKind(kind).toUpperCase())}`;
 	const summary = (input.summary?.trim() || `Created from the Spec Trace VS Code extension for ${title}.`).trim();
-	const traceHeading = getTraceHeading(kind);
-	const traceSection = traceLinks.length > 0 ? traceLinks.map((value) => `- ${traceHeading}: \`${value}\``) : [`- ${traceHeading}: none yet`];
-
-	const content = [
-		'---',
-		`artifact_id: ${artifactId}`,
-		`title: ${title}`,
-		`summary: ${summary}`,
-		'---',
-		`# ${artifactId}`,
-		'',
-		'## Purpose',
-		'',
+	const owner = input.owner?.trim() || `${domain}-maintainers`;
+	const artifactType = getManagedMarkdownArtifactType(kind);
+	const content = createManagedMarkdownTemplate({
+		artifactId,
+		artifactType,
+		domain,
+		title,
+		owner,
 		summary,
-		'',
-		'## Trace Links',
-		'',
-		...traceSection,
-		'',
-		'## Notes',
-		'',
-		'- Add implementation-specific detail here.',
-		''
-	].join('\n');
+		status: kind === 'architecture' ? 'draft' : 'planned',
+		traceReferences: traceLinks
+	});
 
 	return {
 		kind,
@@ -419,20 +408,20 @@ function getArtifactPrefix(kind: Exclude<ArtifactKind, 'specification'>): string
 	}
 }
 
-function getTraceHeading(kind: Exclude<ArtifactKind, 'specification'>): string {
-	switch (kind) {
-		case 'architecture':
-			return 'Satisfies';
-		case 'workItem':
-			return 'Addresses';
-		case 'verification':
-			return 'Verifies';
-	}
-}
-
 function toUpperTokenSequence(value: string, fallback: string): string {
 	const normalized = value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
 	return normalized.length > 0 ? normalized : fallback;
+}
+
+function getManagedMarkdownArtifactType(kind: Exclude<ArtifactKind, 'specification'>): ManagedMarkdownArtifactType {
+	switch (kind) {
+		case 'architecture':
+			return 'architecture';
+		case 'workItem':
+			return 'work_item';
+		case 'verification':
+			return 'verification';
+	}
 }
 
 function toKebabCase(value: string): string {

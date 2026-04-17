@@ -83,8 +83,11 @@ suite('Repository management core', () => {
 
 		assert.strictEqual(rendered.artifactId, 'VER-BOOTSTRAP-FIRST-FLOW');
 		assert.strictEqual(rendered.relativePath, 'specs/verification/spec-trace-vsce/VER-BOOTSTRAP-FIRST-FLOW.md');
-		assert.ok(rendered.content.includes('- Verifies: `REQ-VSCE-MANAGEMENT-0001`'));
-		assert.ok(rendered.content.includes('- Verifies: `REQ-VSCE-MANAGEMENT-0002`'));
+		assert.ok(rendered.content.includes('artifact_id: VER-BOOTSTRAP-FIRST-FLOW'));
+		assert.ok(rendered.content.includes('artifact_type: verification'));
+		assert.ok(rendered.content.includes('verifies:'));
+		assert.ok(rendered.content.includes('REQ-VSCE-MANAGEMENT-0001'));
+		assert.ok(rendered.content.includes('REQ-VSCE-MANAGEMENT-0002'));
 		assert.ok(rendered.domainIndexContent.includes('spec-trace-vsce'));
 	});
 

@@ -1,0 +1,98 @@
+{
+  "artifact_id": "SPEC-VSCE-BROWSE",
+  "artifact_type": "specification",
+  "title": "Spec Trace Repository Browse and Trace Navigation",
+  "domain": "spec-trace-vsce",
+  "capability": "repository-browse",
+  "status": "draft",
+  "owner": "spec-trace-vsce-maintainers",
+  "tags": [
+    "spec-trace",
+    "vsce",
+    "web-extension",
+    "browse",
+    "navigation"
+  ],
+  "related_artifacts": [
+    "SPEC-VSCE-EDITOR",
+    "SPEC-VSCE-MANAGEMENT"
+  ],
+  "purpose": "Define the browser-safe repository browse, inspection, and cross-artifact navigation experience for Spec Trace artifacts inside the VS Code extension.",
+  "scope": "This specification covers canonical artifact discovery inside the current workspace, grouped repository browsing, requirement-level reveal from specification entries, searchable local catalogs, artifact inspection and preview, context-aware browse actions, and local trace-navigation behavior for canonical specification, architecture, work-item, and verification artifacts. External helper services, GitHub-backed flows, batch synchronization, report generation, and non-workspace artifact sources are out of scope.",
+  "context": "The current extension already exposes a repository explorer and a structured specification editor, but the browse lane still needs a fuller canonical definition for what the user should be able to see, inspect, search, and navigate directly inside the browser-hosted extension. Authors should be able to understand local trace relationships and move between artifacts without leaving the extension or relying on Workbench helper processes.",
+  "requirements": [
+    {
+      "id": "REQ-VSCE-BROWSE-0001",
+      "title": "Run the browse lane in the web extension host",
+      "statement": "The extension MUST provide the repository browse, inspection, and navigation surfaces entirely inside the VS Code web extension host without requiring Node-only APIs, native binaries, or a separate local helper service."
+    },
+    {
+      "id": "REQ-VSCE-BROWSE-0002",
+      "title": "Discover canonical artifacts in the current workspace",
+      "statement": "The browse lane MUST discover canonical Spec Trace artifacts only within the current workspace root, including specification JSON files under `specs/requirements/` and canonical markdown artifacts under `specs/architecture/`, `specs/work-items/`, and `specs/verification/`."
+    },
+    {
+      "id": "REQ-VSCE-BROWSE-0003",
+      "title": "Prefer authoritative canonical sources",
+      "statement": "When multiple local files describe the same canonical artifact, the browse lane MUST present one authoritative browse entry and MUST prefer the canonical source file when choosing the default open target.",
+      "notes": [
+        "This prevents duplicate browse entries when a rendered or companion file exists beside the canonical source."
+      ]
+    },
+    {
+      "id": "REQ-VSCE-BROWSE-0004",
+      "title": "Confine browse operations to the current workspace root",
+      "statement": "Artifact discovery, search, preview, navigation, and browse-driven actions MUST be confined to the current workspace repository root."
+    },
+    {
+      "id": "REQ-VSCE-BROWSE-0005",
+      "title": "Group artifacts by canonical class and domain",
+      "statement": "The repository browse surface MUST group discovered artifacts by canonical artifact class and domain rather than by raw filesystem nesting alone."
+    },
+    {
+      "id": "REQ-VSCE-BROWSE-0006",
+      "title": "Browse specifications at requirement level",
+      "statement": "The browse lane MUST expand canonical specification artifacts into requirement-level entries and MUST let the user reveal a specific requirement directly from the browse surface."
+    },
+    {
+      "id": "REQ-VSCE-BROWSE-0007",
+      "title": "Search and filter the local artifact catalog",
+      "statement": "The extension MUST let the user search or filter the discovered artifact and requirement catalog by local identifiers, titles, and key summary text without leaving the extension."
+    },
+    {
+      "id": "REQ-VSCE-BROWSE-0008",
+      "title": "Show concise metadata and health in browse results",
+      "statement": "Browse results and tree entries MUST surface concise local metadata for each artifact, including artifact identifier, title, artifact class, domain, and current health or validation state when that state can be derived locally."
+    },
+    {
+      "id": "REQ-VSCE-BROWSE-0009",
+      "title": "Provide in-extension artifact inspection",
+      "statement": "The extension MUST provide an in-extension artifact inspection experience for the selected browse item that can show rendered markdown or structured summary content without forcing the user to leave the extension or parse raw front matter first."
+    },
+    {
+      "id": "REQ-VSCE-BROWSE-0010",
+      "title": "Open artifacts in the most appropriate available surface",
+      "statement": "From the browse lane, the extension MUST open the selected artifact in the most appropriate available editor surface, including the structured specification editor for canonical specification JSON and any managed markdown authoring surface registered for the selected artifact class, while keeping the standard text editor available as a fallback."
+    },
+    {
+      "id": "REQ-VSCE-BROWSE-0011",
+      "title": "Navigate local trace and related-artifact references",
+      "statement": "The browse and inspection surfaces MUST let the user navigate from local trace references and `related_artifacts` values to the referenced local artifact or requirement when the target exists in the current workspace."
+    },
+    {
+      "id": "REQ-VSCE-BROWSE-0012",
+      "title": "Keep invalid or unresolved entries visible",
+      "statement": "When a discovered canonical file is malformed or a local artifact reference cannot be resolved, the browse lane MUST keep that item visible, mark the problem clearly, and offer an action that opens the raw file or the nearest owning artifact instead of silently hiding the failure."
+    },
+    {
+      "id": "REQ-VSCE-BROWSE-0013",
+      "title": "Expose context-aware browse actions",
+      "statement": "The browse lane MUST expose context-aware user actions for the selected artifact class or domain, including open, open-as-text, reveal linked target, and create-artifact actions that route into the extension's existing browser-safe management flows."
+    },
+    {
+      "id": "REQ-VSCE-BROWSE-0014",
+      "title": "Keep browsing additive and read-only",
+      "statement": "Browse operations MUST remain additive and local: they MAY persist view state such as selection, expansion, or filters, but they MUST NOT rewrite repository content as a side effect of browsing, inspecting, or navigating."
+    }
+  ]
+}

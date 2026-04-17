@@ -12,5 +12,6 @@ suite('Web Extension Test Suite', () => {
 		assert.ok(commands.includes('spec-trace-vsce.initializeRepository'));
 		assert.ok(commands.includes('spec-trace-vsce.createArtifact'));
 		assert.ok(commands.includes('spec-trace-vsce.openRepositoryExplorer'));
+		assert.ok(commands.includes('spec-trace-vsce.openQualityView'));
 	});
 });

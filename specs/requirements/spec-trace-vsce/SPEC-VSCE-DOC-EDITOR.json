@@ -1,0 +1,111 @@
+{
+  "artifact_id": "SPEC-VSCE-DOC-EDITOR",
+  "artifact_type": "specification",
+  "title": "Spec Trace Canonical Markdown Artifact Authoring",
+  "domain": "spec-trace-vsce",
+  "capability": "canonical-markdown-authoring",
+  "status": "draft",
+  "owner": "spec-trace-vsce-maintainers",
+  "tags": [
+    "spec-trace",
+    "vsce",
+    "web-extension",
+    "markdown",
+    "authoring"
+  ],
+  "related_artifacts": [
+    "SPEC-VSCE-BROWSE",
+    "SPEC-VSCE-EDITOR",
+    "SPEC-VSCE-MANAGEMENT"
+  ],
+  "purpose": "Define the browser-safe managed authoring surface for canonical architecture, work-item, and verification markdown artifacts inside the VS Code extension.",
+  "scope": "This specification covers recognizing supported canonical markdown artifacts, opening them in a managed authoring surface, editing common metadata and artifact-specific trace fields, validating local references, preserving unmanaged content, rendering preview, and saving deterministic markdown for canonical architecture, work-item, and verification files. Runbooks, tracking notes, GitHub synchronization, helper services, repository-wide backlink repair, and noncanonical markdown are out of scope.",
+  "context": "The extension already supports bootstrap and template-backed creation for markdown artifacts, but authors still fall back to raw text editing after creation. A browser-safe managed authoring lane would let the extension handle the core Spec Trace markdown artifacts directly, while keeping plain-text editing available when the user wants it or when a file is outside the managed canonical scope.",
+  "requirements": [
+    {
+      "id": "REQ-VSCE-DOC-EDITOR-0001",
+      "title": "Run markdown artifact authoring in the web extension host",
+      "statement": "The managed markdown artifact authoring surface MUST run in the VS Code web extension host without requiring Node-only APIs, native binaries, or a separate local helper service."
+    },
+    {
+      "id": "REQ-VSCE-DOC-EDITOR-0002",
+      "title": "Recognize only supported canonical markdown artifacts",
+      "statement": "The extension MUST treat a markdown file as a managed canonical artifact only when its workspace-relative path is under `specs/architecture/`, `specs/work-items/`, or `specs/verification/` and its front matter identifies a matching canonical artifact type; files that do not meet both conditions MUST remain available through the standard text editor rather than being coerced into the managed surface."
+    },
+    {
+      "id": "REQ-VSCE-DOC-EDITOR-0003",
+      "title": "Confine markdown artifact access to the current workspace root",
+      "statement": "Loading, editing, saving, previewing, and link navigation for managed markdown artifacts MUST be confined to the current workspace repository root."
+    },
+    {
+      "id": "REQ-VSCE-DOC-EDITOR-0004",
+      "title": "Provide a managed authoring surface with text fallback",
+      "statement": "The extension MUST provide a managed authoring surface for supported canonical architecture, work-item, and verification markdown artifacts and MUST let the user reopen the same file as plain text through standard VS Code flows."
+    },
+    {
+      "id": "REQ-VSCE-DOC-EDITOR-0005",
+      "title": "Expose common canonical metadata fields",
+      "statement": "The managed authoring surface MUST display `artifact_id` and `artifact_type` and MUST allow editing of the common canonical fields `title`, `domain`, `status`, `owner`, `summary`, and `related_artifacts`."
+    },
+    {
+      "id": "REQ-VSCE-DOC-EDITOR-0006",
+      "title": "Expose artifact-class-specific trace fields",
+      "statement": "The managed authoring surface MUST expose artifact-class-specific trace fields using controls that match their structured list semantics, including `satisfies` for architecture artifacts, `addresses`, `design_links`, and `verification_links` for work-item artifacts, and `verifies` for verification artifacts."
+    },
+    {
+      "id": "REQ-VSCE-DOC-EDITOR-0007",
+      "title": "Allow add remove and reorder for trace and related references",
+      "statement": "The authoring surface MUST let the user add, remove, and reorder trace references and related-artifact references without forcing manual front matter editing."
+    },
+    {
+      "id": "REQ-VSCE-DOC-EDITOR-0008",
+      "title": "Support both local pickers and manual reference entry",
+      "statement": "Reference editing controls MUST support both catalog-based selection from locally discovered requirements and artifacts and manual entry of artifact identifiers or repo-relative paths when the target is not yet discoverable."
+    },
+    {
+      "id": "REQ-VSCE-DOC-EDITOR-0009",
+      "title": "Open local reference targets from the authoring surface",
+      "statement": "The managed authoring surface MUST let the user open or reveal any selected local reference target directly from the editor when that target exists in the current workspace."
+    },
+    {
+      "id": "REQ-VSCE-DOC-EDITOR-0010",
+      "title": "Expose primary authored narrative sections",
+      "statement": "The managed authoring surface MUST expose editable narrative content for the artifact's primary authored sections while preserving additional markdown sections and prose that the surface does not model directly."
+    },
+    {
+      "id": "REQ-VSCE-DOC-EDITOR-0011",
+      "title": "Preserve untouched front matter and markdown content",
+      "statement": "When the user saves through the managed surface, the extension MUST preserve untouched front matter fields and untouched markdown content without data loss for portions of the document the user did not modify."
+    },
+    {
+      "id": "REQ-VSCE-DOC-EDITOR-0012",
+      "title": "Surface inline validation for local authoring rules",
+      "statement": "The managed authoring surface MUST surface inline validation for required fields, artifact-id and path-family consistency, duplicate references, and unresolved local targets that can be detected from the current workspace."
+    },
+    {
+      "id": "REQ-VSCE-DOC-EDITOR-0013",
+      "title": "Block invalid markdown artifact saves",
+      "statement": "The managed authoring surface MUST block a save when the current draft violates the canonical artifact requirements or local validation rules enforced by the editor."
+    },
+    {
+      "id": "REQ-VSCE-DOC-EDITOR-0014",
+      "title": "Write deterministic markdown for managed fields",
+      "statement": "The extension MUST write deterministic markdown for the fields and sections it manages, including stable front matter ordering and canonical section formatting for managed content."
+    },
+    {
+      "id": "REQ-VSCE-DOC-EDITOR-0015",
+      "title": "Detect external file changes for markdown artifacts",
+      "statement": "The managed authoring surface MUST detect external file changes and prevent silent overwrite of newer markdown artifact content."
+    },
+    {
+      "id": "REQ-VSCE-DOC-EDITOR-0016",
+      "title": "Integrate undo and redo for managed markdown edits",
+      "statement": "The managed authoring surface MUST map user edits into standard VS Code undo and redo behavior."
+    },
+    {
+      "id": "REQ-VSCE-DOC-EDITOR-0017",
+      "title": "Provide preview without displacing editing",
+      "statement": "The managed authoring surface MUST render a markdown preview within the extension, but that preview MUST remain collapsed or hidden by default so authored fields stay primary during editing."
+    }
+  ]
+}

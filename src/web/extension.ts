@@ -1,7 +1,9 @@
 import * as vscode from 'vscode';
 
 import { SPECIFICATION_CUSTOM_EDITOR_VIEW_TYPE, SpecificationCustomEditorProvider } from './editor/host/specificationCustomEditor.js';
+import { MARKDOWN_ARTIFACT_CUSTOM_EDITOR_VIEW_TYPE, MarkdownArtifactCustomEditorProvider } from './editor/markdown/host/markdownArtifactCustomEditor.js';
 import { registerSpecTraceExplorer } from './navigation/specTraceExplorer.js';
+import { QualityViewProvider, QUALITY_VIEW_COMMAND } from './quality/host/qualityViewProvider.js';
 import {
 	RepositoryManager,
 	SPEC_TRACE_CREATE_ARTIFACT_COMMAND,
@@ -10,6 +12,8 @@ import {
 
 export function activate(context: vscode.ExtensionContext): void {
 	const provider = new SpecificationCustomEditorProvider(context);
+	const markdownProvider = new MarkdownArtifactCustomEditorProvider(context);
+	const qualityProvider = new QualityViewProvider(context);
 	const repositoryManager = new RepositoryManager();
 	const openSmokeFixture = vscode.commands.registerCommand('spec-trace-vsce.openSmokeFixture', async () => {
 		console.log('[spec-trace-vsce] openSmokeFixture command invoked');
@@ -29,13 +33,24 @@ export function activate(context: vscode.ExtensionContext): void {
 	const createArtifact = vscode.commands.registerCommand(SPEC_TRACE_CREATE_ARTIFACT_COMMAND, async (options?: { kind?: 'specification' | 'architecture' | 'workItem' | 'verification'; domain?: string }) => {
 		await repositoryManager.promptAndCreateArtifact(options);
 	});
-	const explorer = registerSpecTraceExplorer(context, provider, repositoryManager);
+	const openQualityView = vscode.commands.registerCommand(QUALITY_VIEW_COMMAND, async () => {
+		await qualityProvider.openQualityView();
+	});
+	const explorer = registerSpecTraceExplorer(context, provider, markdownProvider, repositoryManager);
 
 	context.subscriptions.push(
 		openSmokeFixture,
 		initializeRepository,
 		createArtifact,
+		openQualityView,
+		qualityProvider,
 		vscode.window.registerCustomEditorProvider(SPECIFICATION_CUSTOM_EDITOR_VIEW_TYPE, provider, {
+			supportsMultipleEditorsPerDocument: false,
+			webviewOptions: {
+				retainContextWhenHidden: true
+			}
+		}),
+		vscode.window.registerCustomEditorProvider(MARKDOWN_ARTIFACT_CUSTOM_EDITOR_VIEW_TYPE, markdownProvider, {
 			supportsMultipleEditorsPerDocument: false,
 			webviewOptions: {
 				retainContextWhenHidden: true

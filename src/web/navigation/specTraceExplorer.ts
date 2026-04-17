@@ -3,10 +3,22 @@ import * as vscode from 'vscode';
 import {
 	parseSpecificationDocument
 } from '../editor/core/specificationValidation.js';
+import {
+	getManagedMarkdownArtifactTypeFromPath,
+	getTraceFieldForArtifactType,
+	normalizeManagedMarkdownDocument,
+	parseManagedMarkdownDocument,
+	validateManagedMarkdownDocument,
+	type ManagedMarkdownArtifactType,
+	type ManagedMarkdownValidationIssue
+} from '../editor/markdown/core.js';
 
 import {
 	SpecificationCustomEditorProvider
 } from '../editor/host/specificationCustomEditor.js';
+import {
+	MarkdownArtifactCustomEditorProvider
+} from '../editor/markdown/host/markdownArtifactCustomEditor.js';
 import {
 	RepositoryManager,
 	SPEC_TRACE_CREATE_ARTIFACT_COMMAND,
@@ -23,7 +35,7 @@ export const SPEC_TRACE_REFRESH_EXPLORER_COMMAND = 'spec-trace-vsce.refreshRepos
 export const SPEC_TRACE_OPEN_TREE_ITEM_COMMAND = 'spec-trace-vsce.openTreeItem';
 
 type ArtifactCategoryId = 'specifications' | 'architecture' | 'workItems' | 'verification';
-type TreeNodeKind = 'category' | 'domain' | 'specification' | 'markdown' | 'requirement' | 'action';
+type TreeNodeKind = 'category' | 'domain' | 'specification' | 'markdown' | 'requirement' | 'reference' | 'action';
 
 interface CategoryDefinition {
 	id: ArtifactCategoryId;
@@ -52,22 +64,48 @@ interface DomainSnapshot {
 }
 
 interface ArtifactDocumentSnapshot {
-	kind: TreeNodeKind;
+	kind: 'specification' | 'markdown';
 	uri: vscode.Uri;
+	artifactId?: string;
 	label: string;
 	description: string;
 	tooltip: string;
-	requiresReveal?: boolean;
-	isValidSpecification?: boolean;
+	health: 'ok' | 'warning' | 'error';
+	healthMessage: string;
+	managed: boolean;
+	artifactType?: ManagedMarkdownArtifactType;
+	summary?: string;
+	references: ReferenceSnapshot[];
 	requirements?: RequirementSnapshot[];
 }
 
 interface RequirementSnapshot {
 	uri: vscode.Uri;
+	id?: string;
 	label: string;
 	description: string;
 	tooltip: string;
 	index: number;
+	references: ReferenceSnapshot[];
+}
+
+interface ReferenceSnapshot {
+	field: string;
+	value: string;
+	kind: 'requirement' | 'artifact' | 'file';
+	description: string;
+	sourceUri: vscode.Uri;
+	targetUri?: vscode.Uri;
+	targetRequirementIndex?: number;
+	targetOpenKind?: 'specification' | 'markdown' | 'text';
+	resolved: boolean;
+}
+
+interface ResolvedReferenceTarget {
+	kind: 'specification' | 'markdown' | 'requirement' | 'file';
+	uri: vscode.Uri;
+	managed?: boolean;
+	requirementIndex?: number;
 }
 
 interface TreeNodeData {
@@ -76,6 +114,7 @@ interface TreeNodeData {
 	domainId?: string;
 	document?: ArtifactDocumentSnapshot;
 	requirement?: RequirementSnapshot;
+	reference?: ReferenceSnapshot;
 	action?: {
 		command: string;
 		arguments?: unknown[];
@@ -118,9 +157,10 @@ const excludedWorkspaceGlobs = '{**/node_modules/**,**/dist/**,**/.git/**,**/.vs
 export function registerSpecTraceExplorer(
 	context: vscode.ExtensionContext,
 	editorProvider: SpecificationCustomEditorProvider,
+	markdownProvider: MarkdownArtifactCustomEditorProvider,
 	repositoryManager: RepositoryManager
 ): SpecTraceExplorerProvider {
-	const provider = new SpecTraceExplorerProvider(editorProvider, repositoryManager);
+	const provider = new SpecTraceExplorerProvider(editorProvider, markdownProvider, repositoryManager);
 	const treeView = vscode.window.createTreeView(SPEC_TRACE_EXPLORER_VIEW_ID, {
 		treeDataProvider: provider,
 		showCollapseAll: true
@@ -134,6 +174,18 @@ export function registerSpecTraceExplorer(
 		}),
 		vscode.commands.registerCommand(SPEC_TRACE_REFRESH_EXPLORER_COMMAND, () => {
 			provider.refresh();
+		}),
+		vscode.commands.registerCommand('spec-trace-vsce.filterRepositoryExplorer', async () => {
+			const query = await vscode.window.showInputBox({
+				title: 'Filter repository explorer',
+				prompt: 'Filter artifacts and requirements by identifier, title, summary text, or reference token.',
+				value: provider.filterQuery,
+				ignoreFocusOut: true
+			});
+			provider.setFilterQuery(query?.trim() ?? '');
+		}),
+		vscode.commands.registerCommand('spec-trace-vsce.clearRepositoryExplorerFilter', () => {
+			provider.setFilterQuery('');
 		}),
 		vscode.commands.registerCommand(SPEC_TRACE_OPEN_TREE_ITEM_COMMAND, async (item: SpecTraceTreeItem) => {
 			await provider.openItem(item);
@@ -150,11 +202,13 @@ export class SpecTraceExplorerProvider implements vscode.TreeDataProvider<SpecTr
 
 	private _snapshotPromise: Promise<RepositorySnapshot> | undefined;
 	private _repositoryStatePromise: Promise<'missing' | 'partial' | 'ready'> | undefined;
+	private _filterQuery = '';
 
 	public readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
 	public constructor(
 		private readonly editorProvider: SpecificationCustomEditorProvider,
+		private readonly markdownProvider: MarkdownArtifactCustomEditorProvider,
 		private readonly repositoryManager: RepositoryManager
 	) {
 		const workspaceFolder = this.workspaceFolder;
@@ -201,6 +255,15 @@ export class SpecTraceExplorerProvider implements vscode.TreeDataProvider<SpecTr
 		this._onDidChangeTreeData.fire();
 	}
 
+	public get filterQuery(): string {
+		return this._filterQuery;
+	}
+
+	public setFilterQuery(query: string): void {
+		this._filterQuery = query.trim();
+		this.refresh();
+	}
+
 	public getTreeItem(element: SpecTraceTreeItem): vscode.TreeItem {
 		return element;
 	}
@@ -240,8 +303,37 @@ export class SpecTraceExplorerProvider implements vscode.TreeDataProvider<SpecTr
 					: [];
 			}
 			case 'specification': {
-				return element.data.document?.requirements?.map((requirement) => createRequirementNode(element.data.document!, requirement)) ?? [];
+				if (!element.data.document) {
+					return [];
+				}
+
+				return [
+					createOpenManagedActionNode(element.data.document),
+					createOpenTextActionNode(element.data.document),
+					...element.data.document.references.map((reference) => createReferenceNode(element.data.document!, reference)),
+					...(element.data.document.requirements ?? []).map((requirement) => createRequirementNode(element.data.document!, requirement))
+				];
 			}
+			case 'markdown': {
+				if (!element.data.document) {
+					return [];
+				}
+
+				return [
+					...(element.data.document.managed ? [createOpenManagedActionNode(element.data.document)] : []),
+					createOpenTextActionNode(element.data.document),
+					...element.data.document.references.map((reference) => createReferenceNode(element.data.document!, reference))
+				];
+			}
+			case 'requirement': {
+				if (!element.data.requirement) {
+					return [];
+				}
+
+				return element.data.requirement.references.map((reference) => createReferenceNode(element.data.document!, reference));
+			}
+			case 'reference':
+				return [];
 			default:
 				return [];
 		}
@@ -254,7 +346,7 @@ export class SpecTraceExplorerProvider implements vscode.TreeDataProvider<SpecTr
 					return;
 				}
 
-				if (item.data.document.isValidSpecification === false) {
+				if (item.data.document.health === 'error') {
 					await vscode.commands.executeCommand('vscode.open', item.data.document.uri);
 					return;
 				}
@@ -267,6 +359,11 @@ export class SpecTraceExplorerProvider implements vscode.TreeDataProvider<SpecTr
 					return;
 				}
 
+				if (item.data.document.managed) {
+					await this.markdownProvider.openManagedMarkdownDocument(item.data.document.uri);
+					return;
+				}
+
 				await vscode.commands.executeCommand('vscode.open', item.data.document.uri);
 				return;
 			}
@@ -276,6 +373,14 @@ export class SpecTraceExplorerProvider implements vscode.TreeDataProvider<SpecTr
 				}
 
 				await this.editorProvider.revealRequirement(item.data.document.uri, item.data.requirement.index);
+				return;
+			}
+			case 'reference': {
+				if (!item.data.reference) {
+					return;
+				}
+
+				await this.openReference(item.data.reference);
 				return;
 			}
 			case 'action': {
@@ -293,9 +398,52 @@ export class SpecTraceExplorerProvider implements vscode.TreeDataProvider<SpecTr
 		}
 	}
 
+	private async openReference(reference: ReferenceSnapshot): Promise<void> {
+		const snapshot = await this.buildSnapshot();
+		const resolved = resolveReferenceTarget(reference.value, snapshot);
+		if (!resolved) {
+			await vscode.commands.executeCommand('vscode.open', reference.sourceUri);
+			return;
+		}
+
+		if (resolved.kind === 'requirement') {
+			if (resolved.requirementIndex === undefined) {
+				await vscode.commands.executeCommand('vscode.open', resolved.uri);
+				return;
+			}
+
+			await this.editorProvider.revealRequirement(resolved.uri, resolved.requirementIndex);
+			return;
+		}
+
+		if (resolved.kind === 'markdown') {
+			if (resolved.managed) {
+				await this.markdownProvider.openManagedMarkdownDocument(resolved.uri);
+				return;
+			}
+
+			await vscode.commands.executeCommand('vscode.open', resolved.uri);
+			return;
+		}
+
+		if (resolved.kind === 'specification') {
+			await this.editorProvider.openSpecificationDocument(resolved.uri);
+			return;
+		}
+
+		if (resolved.kind === 'file') {
+			await vscode.commands.executeCommand('vscode.open', resolved.uri);
+			return;
+		}
+
+		await vscode.commands.executeCommand('vscode.open', resolved.uri);
+	}
+
 	private async getSnapshot(): Promise<RepositorySnapshot> {
 		if (!this._snapshotPromise) {
-			this._snapshotPromise = this.buildSnapshot().catch((error) => {
+			this._snapshotPromise = this.buildSnapshot()
+				.then((snapshot) => this.applyFilter(snapshot, this._filterQuery))
+				.catch((error) => {
 				console.error('[spec-trace-vsce] Failed to build tree snapshot', error);
 				return { categories: [] } satisfies RepositorySnapshot;
 			});
@@ -322,7 +470,115 @@ export class SpecTraceExplorerProvider implements vscode.TreeDataProvider<SpecTr
 		}
 
 		const categories = await Promise.all(categoryDefinitions.map(async (definition) => this.buildCategorySnapshot(workspaceFolder, definition)));
+		return this.resolveSnapshotReferences({ categories });
+	}
+
+	private resolveSnapshotReferences(snapshot: RepositorySnapshot): RepositorySnapshot {
+		for (const category of snapshot.categories) {
+			for (const domain of category.domains) {
+				for (const document of domain.documents) {
+					for (const reference of document.references) {
+						const resolved = resolveReferenceTarget(reference.value, snapshot);
+						if (!resolved) {
+							continue;
+						}
+
+						reference.resolved = true;
+						reference.targetUri = resolved.uri;
+						reference.targetOpenKind = resolved.kind === 'file'
+							? 'text'
+							: resolved.kind === 'requirement'
+								? 'specification'
+								: resolved.kind;
+					}
+
+					for (const requirement of document.requirements ?? []) {
+						for (const reference of requirement.references) {
+							const resolved = resolveReferenceTarget(reference.value, snapshot);
+							if (!resolved) {
+								continue;
+							}
+
+							reference.resolved = true;
+							reference.targetUri = resolved.uri;
+							reference.targetOpenKind = resolved.kind === 'file'
+								? 'text'
+								: resolved.kind === 'requirement'
+									? 'specification'
+									: resolved.kind;
+						}
+					}
+				}
+			}
+		}
+
+		return snapshot;
+	}
+
+	private applyFilter(snapshot: RepositorySnapshot, query: string): RepositorySnapshot {
+		const normalizedQuery = query.trim().toLowerCase();
+		if (normalizedQuery.length === 0) {
+			return snapshot;
+		}
+
+		const categories = snapshot.categories
+			.map((category) => {
+				const matchedDomains = category.domains
+					.map((domain) => this.filterDomain(domain, normalizedQuery))
+					.filter((domain): domain is DomainSnapshot => domain !== undefined);
+				if (matchedDomains.length === 0 && !matchesText(category.label, normalizedQuery) && !matchesText(category.description, normalizedQuery)) {
+					return undefined;
+				}
+
+				return {
+					...category,
+					domains: matchedDomains
+				};
+			})
+			.filter((category): category is CategorySnapshot => category !== undefined);
+
 		return { categories };
+	}
+
+	private filterDomain(domain: DomainSnapshot, query: string): DomainSnapshot | undefined {
+		const documents = domain.documents
+			.map((document) => this.filterDocument(document, query))
+			.filter((document): document is ArtifactDocumentSnapshot => document !== undefined);
+		if (documents.length === 0 && !matchesText(domain.label, query) && !matchesText(domain.description, query)) {
+			return undefined;
+		}
+
+		return {
+			...domain,
+			documents
+		};
+	}
+
+	private filterDocument(document: ArtifactDocumentSnapshot, query: string): ArtifactDocumentSnapshot | undefined {
+		const requirements = document.requirements?.map((requirement) => this.filterRequirement(requirement, query)).filter((requirement): requirement is RequirementSnapshot => requirement !== undefined) ?? [];
+		const references = document.references.filter((reference) => referenceMatchesQuery(reference, query));
+		const matches = documentMatchesQuery(document, query) || references.length > 0 || requirements.length > 0;
+		if (!matches) {
+			return undefined;
+		}
+
+		return {
+			...document,
+			requirements: document.kind === 'specification' ? requirements : document.requirements,
+			references
+		};
+	}
+
+	private filterRequirement(requirement: RequirementSnapshot, query: string): RequirementSnapshot | undefined {
+		const references = requirement.references.filter((reference) => referenceMatchesQuery(reference, query));
+		if (!requirementMatchesQuery(requirement, query) && references.length === 0) {
+			return undefined;
+		}
+
+		return {
+			...requirement,
+			references
+		};
 	}
 
 	private async buildCategorySnapshot(
@@ -431,11 +687,14 @@ export class SpecTraceExplorerProvider implements vscode.TreeDataProvider<SpecTr
 			return {
 				kind: 'specification',
 				uri,
+				artifactId: fallbackLabel,
 				label: fallbackLabel,
 				description: 'Invalid specification JSON',
 				tooltip: fileName,
-				requiresReveal: false,
-				isValidSpecification: false,
+				health: 'error',
+				healthMessage: parsed.issues.map((issue) => issue.message).join('; ') || 'Invalid specification JSON',
+				managed: true,
+				references: [],
 				requirements: []
 			};
 		}
@@ -445,42 +704,83 @@ export class SpecTraceExplorerProvider implements vscode.TreeDataProvider<SpecTr
 		const description = stringValue(document.title) || 'Specification';
 		const tooltip = [
 			stringValue(document.status) ? `Status: ${stringValue(document.status)}` : undefined,
+			parsed.issues.length > 0 ? `${parsed.issues.length} validation issue${parsed.issues.length === 1 ? '' : 's'}` : undefined,
 			uri.toString()
 		].filter(Boolean).join('\n');
+
+		const references = [
+			...collectReferenceSnapshots(uri, 'related_artifacts', document.related_artifacts),
+			...(document.requirements ?? []).flatMap((requirement) => collectRequirementReferences(uri, requirement))
+		];
 
 		return {
 			kind: 'specification',
 			uri,
+			artifactId: label,
 			label,
 			description,
 			tooltip,
-			requiresReveal: true,
-			isValidSpecification: true,
+			health: parsed.issues.length > 0 ? 'warning' : 'ok',
+			healthMessage: parsed.issues.length > 0 ? parsed.issues.map((issue) => issue.message).join('; ') : 'Specification is valid.',
+			managed: true,
+			references,
 			requirements: (document.requirements ?? []).map((requirement, index) => ({
 				uri,
+				id: stringValue(requirement.id),
 				label: stripRequirementPrefix(stringValue(requirement.id), label) || `Requirement ${index + 1}`,
 				description: stringValue(requirement.title) || 'Untitled requirement',
 				tooltip: stringValue(requirement.statement) || 'Add a requirement statement.',
-				index
+				index,
+				references: collectRequirementReferences(uri, requirement)
 			}))
 		};
 	}
 
 	private async describeMarkdownDocument(uri: vscode.Uri, domainId: string): Promise<ArtifactDocumentSnapshot> {
 		const text = await this.readText(uri);
-		const metadata = parseMarkdownMetadata(text);
+		const relativePath = normalizePath(vscode.workspace.asRelativePath(uri, false));
+		const parsed = normalizeManagedMarkdownDocument(parseManagedMarkdownDocument(text));
 		const fileName = basenameFromUri(uri);
 		const isIndex = isIndexMarkdown(uri);
-		const label = metadata.artifactId || (isIndex ? 'Index' : metadata.title) || fileName.replace(/\.md$/i, '');
-		const description = metadata.title || metadata.summary || (isIndex ? `${domainId} index` : 'Markdown document');
-		const tooltip = [metadata.summary, uri.toString()].filter(Boolean).join('\n');
+		const expectedType = getManagedMarkdownArtifactTypeFromPath(relativePath);
+		const managed = expectedType !== undefined && parsed.artifact_type === expectedType;
+		const issues = managed ? validateManagedMarkdownDocument(parsed, relativePath) : [
+			{
+				path: '',
+				message: parsed.artifact_type
+					? `artifact_type "${parsed.artifact_type}" does not match the path family.`
+					: 'Missing canonical artifact_type front matter.',
+				severity: 'error' as const
+			}
+		];
+		const label = parsed.artifact_id || (isIndex ? 'Index' : parsed.title) || fileName.replace(/\.md$/i, '');
+		const description = parsed.title || parsed.summary || (isIndex ? `${domainId} index` : 'Markdown document');
+		const tooltip = [
+			parsed.status ? `Status: ${parsed.status}` : undefined,
+			managed ? 'Managed canonical markdown artifact' : 'Legacy markdown artifact',
+			issues.length > 0 ? `${issues.length} validation issue${issues.length === 1 ? '' : 's'}` : undefined,
+			uri.toString()
+		].filter(Boolean).join('\n');
+		const traceField = parsed.artifact_type ? getTraceFieldForArtifactType(parsed.artifact_type) : undefined;
+		const traceValues = traceField ? parsed[traceField] : undefined;
+		const references = [
+			...collectReferenceSnapshots(uri, 'related_artifacts', parsed.related_artifacts),
+			...(traceField && traceValues ? collectReferenceSnapshots(uri, traceField, traceValues) : [])
+		];
 
 		return {
 			kind: 'markdown',
 			uri,
+			artifactId: parsed.artifact_id || label,
 			label,
 			description,
-			tooltip
+			tooltip,
+			health: issues.some((issue) => issue.severity === 'error') ? 'error' : (issues.length > 0 ? 'warning' : 'ok'),
+			healthMessage: issues.map((issue) => issue.message).join('; ') || (managed ? 'Markdown artifact is valid.' : 'Legacy markdown artifact.'),
+			managed,
+			artifactType: parsed.artifact_type,
+			summary: parsed.summary,
+			references
 		};
 	}
 
@@ -631,10 +931,11 @@ function createDocumentNode(
 	domainId: string,
 	document: ArtifactDocumentSnapshot
 ): SpecTraceTreeItem {
-	const hasRequirements = document.kind === 'specification' && (document.requirements?.length ?? 0) > 0;
+	const hasChildren = (document.requirements?.length ?? 0) > 0 || document.references.length > 0;
+	const healthLabel = document.health === 'ok' ? 'ok' : (document.health === 'warning' ? 'needs attention' : 'error');
 	return new SpecTraceTreeItem(
 		document.label,
-		hasRequirements ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
+		hasChildren ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
 		{
 			kind: document.kind,
 			categoryId,
@@ -642,7 +943,7 @@ function createDocumentNode(
 			document
 		},
 		document.description,
-		document.tooltip,
+		`${document.tooltip}\nHealth: ${healthLabel}\n${document.healthMessage}`,
 		document.kind === 'specification'
 			? new vscode.ThemeIcon('symbol-namespace')
 			: new vscode.ThemeIcon('markdown')
@@ -652,16 +953,281 @@ function createDocumentNode(
 function createRequirementNode(document: ArtifactDocumentSnapshot, requirement: RequirementSnapshot): SpecTraceTreeItem {
 	return new SpecTraceTreeItem(
 		requirement.label,
-		vscode.TreeItemCollapsibleState.None,
+		requirement.references.length > 0 ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
 		{
 			kind: 'requirement',
 			document,
 			requirement
 		},
 		requirement.description,
-		requirement.tooltip,
+		`${requirement.tooltip}\n${requirement.references.length > 0 ? `${requirement.references.length} local reference${requirement.references.length === 1 ? '' : 's'}` : 'No local references'}`,
 		new vscode.ThemeIcon('symbol-method')
 	);
+}
+
+function createOpenManagedActionNode(document: ArtifactDocumentSnapshot): SpecTraceTreeItem {
+	return new SpecTraceTreeItem(
+		'Open managed editor',
+		vscode.TreeItemCollapsibleState.None,
+		{
+			kind: 'action',
+			document,
+			action: {
+				command: document.kind === 'specification'
+					? 'vscode.openWith'
+					: 'vscode.openWith',
+				arguments: [
+					document.uri,
+					document.kind === 'specification'
+						? 'spec-trace-vsce.specFileEditor'
+						: 'spec-trace-vsce.markdownArtifactEditor'
+				]
+			}
+		},
+		'Open the artifact in the managed browser-safe editor.',
+		'Open the managed editor.',
+		new vscode.ThemeIcon('edit')
+	);
+}
+
+function createOpenTextActionNode(document: ArtifactDocumentSnapshot): SpecTraceTreeItem {
+	return new SpecTraceTreeItem(
+		'Open as text',
+		vscode.TreeItemCollapsibleState.None,
+		{
+			kind: 'action',
+			document,
+			action: {
+				command: 'vscode.open',
+				arguments: [document.uri]
+			}
+		},
+		'Open the raw file in the standard text editor.',
+		'Open the raw text editor.',
+		new vscode.ThemeIcon('file-code')
+	);
+}
+
+function createReferenceNode(document: ArtifactDocumentSnapshot, reference: ReferenceSnapshot): SpecTraceTreeItem {
+	const label = `${reference.field}: ${reference.value}`;
+	return new SpecTraceTreeItem(
+		label,
+		vscode.TreeItemCollapsibleState.None,
+		{
+			kind: 'reference',
+			document,
+			reference
+		},
+		reference.description,
+		reference.resolved ? `${reference.description}\n${reference.value}` : `${reference.description}\nUnresolved locally`,
+		reference.resolved ? new vscode.ThemeIcon('link') : new vscode.ThemeIcon('warning')
+	);
+}
+
+function collectReferenceSnapshots(sourceUri: vscode.Uri, field: string, values: readonly string[] | undefined): ReferenceSnapshot[] {
+	if (!Array.isArray(values)) {
+		return [];
+	}
+
+	return values
+		.map((value) => value.trim())
+		.filter((value) => value.length > 0)
+		.map((value) => ({
+			field,
+			value,
+			kind: guessReferenceKind(value),
+			description: resolveReferenceDescription(value),
+			sourceUri,
+			resolved: false
+		}));
+}
+
+function collectRequirementReferences(sourceUri: vscode.Uri, requirement: { trace?: Record<string, unknown> | undefined }): ReferenceSnapshot[] {
+	const trace = requirement.trace;
+	if (!trace || typeof trace !== 'object' || Array.isArray(trace)) {
+		return [];
+	}
+
+	const fields = [
+		'satisfied_by',
+		'implemented_by',
+		'verified_by',
+		'derived_from',
+		'supersedes',
+		'upstream_refs',
+		'related'
+	] as const;
+
+	const references: ReferenceSnapshot[] = [];
+	for (const field of fields) {
+		const values = trace[field];
+		if (!Array.isArray(values)) {
+			continue;
+		}
+
+		for (const value of values) {
+			if (typeof value !== 'string') {
+				continue;
+			}
+
+			const trimmed = value.trim();
+			if (trimmed.length === 0) {
+				continue;
+			}
+
+			references.push({
+				field: `trace.${field}`,
+				value: trimmed,
+				kind: guessReferenceKind(trimmed),
+				description: resolveReferenceDescription(trimmed),
+				sourceUri,
+				resolved: false
+			});
+		}
+	}
+
+	return references;
+}
+
+function guessReferenceKind(value: string): 'requirement' | 'artifact' | 'file' {
+	if (/[\\/]/.test(value) || /\.md$|\.json$|\.yaml$|\.yml$/i.test(value)) {
+		return 'file';
+	}
+
+	if (/^REQ-/.test(value)) {
+		return 'requirement';
+	}
+
+	if (/^(SPEC|ARC|WI|VER)-/.test(value)) {
+		return 'artifact';
+	}
+
+	return 'artifact';
+}
+
+function resolveReferenceDescription(value: string): string {
+	if (/^REQ-/.test(value)) {
+		return 'Requirement reference';
+	}
+
+	if (/^(SPEC|ARC|WI|VER)-/.test(value)) {
+		return 'Artifact reference';
+	}
+
+	if (/[\\/]/.test(value) || /\.md$|\.json$|\.yaml$|\.yml$/i.test(value)) {
+		return 'File reference';
+	}
+
+	return 'Local reference';
+}
+
+function resolveReferenceTarget(token: string, snapshot: RepositorySnapshot): ResolvedReferenceTarget | undefined {
+	const normalized = token.trim();
+	if (normalized.length === 0) {
+		return undefined;
+	}
+
+	if (normalized.includes('/') || /\.md$|\.json$|\.yaml$|\.yml$/i.test(normalized)) {
+		const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+		if (workspaceFolder) {
+			const candidate = vscode.Uri.joinPath(workspaceFolder.uri, ...normalized.split('/'));
+			return {
+				kind: 'file',
+				uri: candidate
+			};
+		}
+	}
+
+	for (const category of snapshot.categories) {
+		for (const domain of category.domains) {
+			for (const document of domain.documents) {
+				if (matchesDocumentIdentifier(document, normalized)) {
+					return {
+						kind: document.kind,
+						uri: document.uri,
+						managed: document.managed
+					};
+				}
+
+				for (const requirement of document.requirements ?? []) {
+					if (matchesRequirementIdentifier(requirement, normalized)) {
+						return {
+							kind: 'requirement',
+							uri: requirement.uri,
+							requirementIndex: requirement.index
+						};
+					}
+				}
+			}
+		}
+	}
+
+	for (const category of snapshot.categories) {
+		for (const domain of category.domains) {
+			for (const document of domain.documents) {
+				const relative = normalizePath(vscode.workspace.asRelativePath(document.uri, false));
+				const basename = basenameFromUri(document.uri);
+				if (relative === normalized || basename === normalized) {
+					return {
+						kind: document.kind,
+						uri: document.uri,
+						managed: document.managed
+					};
+				}
+			}
+		}
+	}
+
+	return undefined;
+}
+
+function matchesDocumentIdentifier(document: ArtifactDocumentSnapshot, token: string): boolean {
+	return [
+		document.artifactId,
+		document.label
+	].some((value) => stringValue(value) === token);
+}
+
+function matchesRequirementIdentifier(requirement: RequirementSnapshot, token: string): boolean {
+	return [
+		requirement.id,
+		requirement.label
+	].some((value) => stringValue(value) === token);
+}
+
+function matchesText(value: string | undefined, query: string): boolean {
+	return stringValue(value).toLowerCase().includes(query);
+}
+
+function documentMatchesQuery(document: ArtifactDocumentSnapshot, query: string): boolean {
+	const fields = [
+		document.artifactId,
+		document.label,
+		document.description,
+		document.healthMessage,
+		document.summary,
+		document.artifactType,
+		document.tooltip
+	];
+
+	return fields.some((value) => matchesText(value, query)) || document.references.some((reference) => referenceMatchesQuery(reference, query));
+}
+
+function requirementMatchesQuery(requirement: RequirementSnapshot, query: string): boolean {
+	return [
+		requirement.id,
+		requirement.label,
+		requirement.description,
+		requirement.tooltip
+	].some((value) => matchesText(value, query)) || requirement.references.some((reference) => referenceMatchesQuery(reference, query));
+}
+
+function referenceMatchesQuery(reference: ReferenceSnapshot, query: string): boolean {
+	return [
+		reference.field,
+		reference.value,
+		reference.description
+	].some((value) => matchesText(value, query));
 }
 
 function parseMarkdownMetadata(text: string): {

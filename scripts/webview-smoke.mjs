@@ -17,6 +17,7 @@ const screenshotDir = process.env.SPEC_TRACE_SMOKE_SCREENSHOT_DIR;
 const smokeCommit = process.env.SPEC_TRACE_SMOKE_COMMIT;
 let launchedBrowser;
 let coverageSmokeState;
+let qualitySmokeState;
 
 const originalChromiumLaunch = playwright.chromium.launch.bind(playwright.chromium);
 playwright.chromium.launch = async (...args) => {
@@ -83,6 +84,7 @@ async function main() {
 		await verifySupplementalSectionsAddItemKeepsState(frame);
 		await verifyRequirementNotesAddItemKeepsState(frame);
 		await verifySaveAndReloadPersistence(page);
+		await verifyQualityView(page);
 	} finally {
 		if (launchedBrowser) {
 			await launchedBrowser.close().catch(() => {});
@@ -189,6 +191,31 @@ async function findCustomEditorFrame(page) {
 	}
 
 	throw new Error('Timed out waiting for the custom editor webview frame.');
+}
+
+async function findQualityViewFrame(page) {
+	const deadline = Date.now() + 30_000;
+	while (Date.now() < deadline) {
+		for (const frame of page.frames()) {
+			let hasQualitySurface = false;
+			try {
+				hasQualitySurface = ((await frame.locator('#artifact-select').count()) > 0
+					&& await frame.locator('#artifact-select').isVisible())
+					|| ((await frame.locator('#summary-card').count()) > 0
+						&& await frame.locator('#summary-card').isVisible());
+			} catch {
+				hasQualitySurface = false;
+			}
+
+			if (hasQualitySurface) {
+				return frame;
+			}
+		}
+
+		await pause(250);
+	}
+
+	throw new Error('Timed out waiting for the quality view webview frame.');
 }
 
 async function verifyUiKitSurface(frame) {
@@ -464,6 +491,28 @@ async function verifySaveAndReloadPersistence(page) {
 	await waitForLocatorText(frame.locator('#sync-chip'), 'Synced');
 }
 
+async function verifyQualityView(page) {
+	assert.ok(qualitySmokeState, 'Quality smoke fixture state should be initialized.');
+
+	await runCommandPaletteCommand(page, 'Open Quality View');
+	const frame = await findQualityViewFrame(page);
+
+	await frame.locator('#artifact-select').waitFor({ state: 'visible', timeout: 10_000 });
+	await waitForLocatorText(frame.locator('h1'), 'Spec Trace Quality');
+	await waitForLocatorTextContains(frame.locator('#summary-card'), qualitySmokeState.reportTitle);
+	await waitForLocatorTextContains(frame.locator('#summary-card'), qualitySmokeState.reportRelativePath);
+
+	const artifactSelect = frame.locator('#artifact-select');
+	const optionCount = await artifactSelect.locator('option').count();
+	assert.ok(optionCount >= 2, `Expected at least two quality artifacts in the selector, got ${optionCount}.`);
+
+	await artifactSelect.selectOption({ index: 1 });
+	await waitForLocatorTextContains(frame.locator('#summary-card'), qualitySmokeState.intentTitle);
+	await waitForLocatorTextContains(frame.locator('#summary-card'), qualitySmokeState.intentRelativePath);
+	await waitForLocatorTextContains(frame.locator('#status-chips'), 'testing_intent');
+	await captureSmokeScreenshot(frame, 'quality-view');
+}
+
 async function titleInputReload(frame, expectedTitle) {
 	const titleInput = frame.locator('#title-input');
 	await titleInput.waitFor({ state: 'visible' });
@@ -554,6 +603,7 @@ async function createSmokeWorkspace() {
 	await copySmokeFixture(workspaceRoot, path.join('specs', 'requirements', 'spec-trace-vsce', '_index.md'));
 	await copySmokeFixture(workspaceRoot, path.join('specs', 'requirements', 'spec-trace-vsce', 'SPEC-VSCE-EDITOR.json'));
 	coverageSmokeState = await seedCoverageEvidence(workspaceRoot);
+	qualitySmokeState = await seedQualityEvidence(workspaceRoot);
 	await copySmokeFixture(workspaceRoot, path.join('specs', 'architecture', 'WB', '_index.md'));
 	await copySmokeFixture(workspaceRoot, path.join('specs', 'work-items', 'WB', '_index.md'));
 	await copySmokeFixture(workspaceRoot, path.join('specs', 'verification', 'WB', '_index.md'));
@@ -620,6 +670,44 @@ async function seedCoverageEvidence(workspaceRoot) {
 		missingCount: requirementSummaries.filter((summary) => summary.status === 'missing').length,
 		coveredRequirementId: coveredRequirement.id,
 		partialRequirementId: partialRequirement.id
+	};
+}
+
+async function seedQualityEvidence(workspaceRoot) {
+	const qualityIntentPath = path.join(workspaceRoot, 'quality', 'testing-intent.yaml');
+	const qualityReportPath = path.join(workspaceRoot, 'artifacts', 'quality', 'nightly', 'quality-report.json');
+
+	await fs.mkdir(path.dirname(qualityIntentPath), { recursive: true });
+	await fs.writeFile(qualityIntentPath, [
+		'title: Browser Smoke Quality Intent',
+		'status: draft',
+		'summary: Capture the local quality intent used by the browser smoke workspace.',
+		'related_artifacts:',
+		'  - SPEC-VSCE-EDITOR',
+		'  - ARC-WB-0001',
+		'critical_files:',
+		'  - specs/requirements/spec-trace-vsce/SPEC-VSCE-EDITOR.json',
+		''
+	].join('\n'));
+
+	await fs.mkdir(path.dirname(qualityReportPath), { recursive: true });
+	await fs.writeFile(qualityReportPath, JSON.stringify({
+		title: 'Nightly Quality Snapshot',
+		status: 'warning',
+		test_result: 'passed',
+		coverage: 'partial',
+		findings: ['Coverage guidance still needs refinement.'],
+		critical_files: ['specs/requirements/spec-trace-vsce/SPEC-VSCE-EDITOR.json'],
+		tests: ['browser smoke'],
+		attestations: ['attestation-2026-04-17'],
+		related_artifacts: ['SPEC-VSCE-EDITOR', 'ARC-WB-0001']
+	}, null, 2));
+
+	return {
+		reportTitle: 'Nightly Quality Snapshot',
+		reportRelativePath: path.posix.join('artifacts', 'quality', 'nightly', 'quality-report.json'),
+		intentTitle: 'Browser Smoke Quality Intent',
+		intentRelativePath: path.posix.join('quality', 'testing-intent.yaml')
 	};
 }
 

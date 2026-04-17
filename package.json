@@ -64,6 +64,21 @@
         "command": "spec-trace-vsce.refreshRepositoryExplorer",
         "title": "Spec Trace: Refresh Repository Explorer",
         "category": "Spec Trace"
+      },
+      {
+        "command": "spec-trace-vsce.filterRepositoryExplorer",
+        "title": "Spec Trace: Filter Repository Explorer",
+        "category": "Spec Trace"
+      },
+      {
+        "command": "spec-trace-vsce.clearRepositoryExplorerFilter",
+        "title": "Spec Trace: Clear Repository Explorer Filter",
+        "category": "Spec Trace"
+      },
+      {
+        "command": "spec-trace-vsce.openQualityView",
+        "title": "Spec Trace: Open Quality View",
+        "category": "Spec Trace"
       }
     ],
     "viewsContainers": {
@@ -94,16 +109,36 @@
           }
         ],
         "priority": "default"
+      },
+      {
+        "viewType": "spec-trace-vsce.markdownArtifactEditor",
+        "displayName": "Spec Trace Managed Markdown Editor",
+        "selector": [
+          {
+            "filenamePattern": "**/specs/architecture/**/*.md"
+          },
+          {
+            "filenamePattern": "**/specs/work-items/**/*.md"
+          },
+          {
+            "filenamePattern": "**/specs/verification/**/*.md"
+          }
+        ],
+        "priority": "option"
       }
     ]
   },
   "activationEvents": [
     "onCustomEditor:spec-trace-vsce.specFileEditor",
+    "onCustomEditor:spec-trace-vsce.markdownArtifactEditor",
     "onView:specTraceExplorer.navigator",
     "onCommand:spec-trace-vsce.initializeRepository",
     "onCommand:spec-trace-vsce.createArtifact",
     "onCommand:spec-trace-vsce.openRepositoryExplorer",
-    "onCommand:spec-trace-vsce.refreshRepositoryExplorer"
+    "onCommand:spec-trace-vsce.refreshRepositoryExplorer",
+    "onCommand:spec-trace-vsce.filterRepositoryExplorer",
+    "onCommand:spec-trace-vsce.clearRepositoryExplorerFilter",
+    "onCommand:spec-trace-vsce.openQualityView"
   ],
   "scripts": {
     "test": "npm run test:web && npm run test:webview",

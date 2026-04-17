@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 
 import { SPECIFICATION_CUSTOM_EDITOR_VIEW_TYPE } from '../editor/host/specificationCustomEditor.js';
+import { MARKDOWN_ARTIFACT_CUSTOM_EDITOR_VIEW_TYPE } from '../editor/markdown/host/markdownArtifactCustomEditor.js';
 
 import {
 	ArtifactKind,
@@ -324,6 +325,11 @@ export class RepositoryManager {
 		const artifactUri = vscode.Uri.joinPath(workspaceFolder.uri, ...rendered.relativePath.split('/'));
 		if (kind === 'specification') {
 			await this.commandsApi.executeCommand('vscode.openWith', artifactUri, SPECIFICATION_CUSTOM_EDITOR_VIEW_TYPE);
+			return;
+		}
+
+		if (kind === 'architecture' || kind === 'workItem' || kind === 'verification') {
+			await this.commandsApi.executeCommand('vscode.openWith', artifactUri, MARKDOWN_ARTIFACT_CUSTOM_EDITOR_VIEW_TYPE);
 			return;
 		}
 

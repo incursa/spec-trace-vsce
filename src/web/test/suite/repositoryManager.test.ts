@@ -3,6 +3,7 @@ import * as assert from 'assert';
 import * as vscode from 'vscode';
 
 import { SPECIFICATION_CUSTOM_EDITOR_VIEW_TYPE } from '../../editor/host/specificationCustomEditor.js';
+import { MARKDOWN_ARTIFACT_CUSTOM_EDITOR_VIEW_TYPE } from '../../editor/markdown/host/markdownArtifactCustomEditor.js';
 import { renderArtifact } from '../../management/core.js';
 import { RepositoryManager } from '../../management/repositoryManager.js';
 
@@ -53,7 +54,7 @@ suite('Repository manager', () => {
 		assert.strictEqual(fileSystem.exists(vscode.Uri.joinPath(workspaceFolder.uri, 'specs', 'requirements', 'getting-started', 'SPEC-GETTING-STARTED.json')), false);
 	});
 
-	test('creates a markdown artifact, seeds the domain index, and opens the standard editor', async () => {
+	test('creates a markdown artifact, seeds the domain index, and opens the managed editor', async () => {
 		const { fileSystem, commands, manager } = createManagerFixture(['platform', 'Platform Overview', 'REQ-PLATFORM-0001, ARC-PLATFORM-0001']);
 		const workspaceFolder = createWorkspaceFolder(vscode.Uri.parse('memfs:/artifact-root'));
 
@@ -73,8 +74,9 @@ suite('Repository manager', () => {
 		assert.strictEqual(fileSystem.exists(domainIndexUri), true);
 		assert.strictEqual(fileSystem.readText(domainIndexUri).includes('# Platform Architecture'), true);
 		assert.strictEqual(commands.calls.length, 1);
-		assert.strictEqual(commands.calls[0]?.command, 'vscode.open');
+		assert.strictEqual(commands.calls[0]?.command, 'vscode.openWith');
 		assert.strictEqual((commands.calls[0]?.args[0] as vscode.Uri).toString(), artifactUri.toString());
+		assert.strictEqual(commands.calls[0]?.args[1], MARKDOWN_ARTIFACT_CUSTOM_EDITOR_VIEW_TYPE);
 	});
 
 	test('creates a specification artifact and opens the custom editor', async () => {

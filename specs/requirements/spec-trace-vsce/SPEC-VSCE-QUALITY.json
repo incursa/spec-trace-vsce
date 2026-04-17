@@ -1,0 +1,79 @@
+{
+  "artifact_id": "SPEC-VSCE-QUALITY",
+  "artifact_type": "specification",
+  "title": "Spec Trace Quality and Attestation Viewing",
+  "domain": "spec-trace-vsce",
+  "capability": "quality-viewing",
+  "status": "draft",
+  "owner": "spec-trace-vsce-maintainers",
+  "tags": [
+    "spec-trace",
+    "vsce",
+    "web-extension",
+    "quality",
+    "attestation"
+  ],
+  "related_artifacts": [
+    "SPEC-VSCE-BROWSE"
+  ],
+  "purpose": "Define the browser-safe read-only viewing experience for repo-local quality evidence and attestation artifacts inside the VS Code extension.",
+  "scope": "This specification covers discovering repo-local authored quality intent and generated quality and attestation outputs, rendering summaries and drill-down views, opening raw artifacts, navigating local references, and refreshing when underlying files change. Test execution, TRX or coverage ingestion, normalization, attestation generation, helper services, and any other write-capable quality automation are out of scope.",
+  "context": "Workbench's quality and attestation pipeline remains outside the browser-safe extension, but the resulting repo-local artifacts are still useful inside VS Code. The extension should be able to read and present those outputs directly so authors can inspect quality posture and trace evidence without invoking external processes from the extension.",
+  "requirements": [
+    {
+      "id": "REQ-VSCE-QUALITY-0001",
+      "title": "Run quality viewing in the web extension host",
+      "statement": "The quality and attestation viewing surfaces MUST run entirely in the VS Code web extension host without requiring Node-only APIs, native binaries, or a separate local helper service."
+    },
+    {
+      "id": "REQ-VSCE-QUALITY-0002",
+      "title": "Discover repo-local quality inputs and outputs",
+      "statement": "The extension MUST discover quality inputs and outputs only within the current workspace root, including authored `quality/testing-intent.yaml` when present and generated quality or attestation artifacts under repo-local `artifacts/quality/` paths."
+    },
+    {
+      "id": "REQ-VSCE-QUALITY-0003",
+      "title": "Keep quality viewing read-only",
+      "statement": "Quality and attestation viewing surfaces MUST remain read-only and MUST NOT execute discovery, run tests, generate coverage, normalize reports, produce attestation snapshots, or mutate generated quality artifacts."
+    },
+    {
+      "id": "REQ-VSCE-QUALITY-0004",
+      "title": "Distinguish missing data from invalid data",
+      "statement": "The extension MUST surface clear empty and error states that distinguish between no quality artifacts being present in the workspace and quality artifacts being present but unreadable, malformed, or incomplete."
+    },
+    {
+      "id": "REQ-VSCE-QUALITY-0005",
+      "title": "Render a current quality summary from local artifacts",
+      "statement": "When generated quality or attestation artifacts are present, the extension MUST render a current quality summary from those local artifacts, including report or attestation status, observed test-result status, and coverage availability when those values can be derived locally."
+    },
+    {
+      "id": "REQ-VSCE-QUALITY-0006",
+      "title": "Support drill-down into local quality evidence",
+      "statement": "The extension MUST let the user drill into locally available quality data, including findings, requirement coverage or trace evidence, critical files or tests, and attestation aggregates when those sections exist in the workspace artifacts."
+    },
+    {
+      "id": "REQ-VSCE-QUALITY-0007",
+      "title": "Open raw underlying quality artifacts",
+      "statement": "For any rendered quality or attestation view, the extension MUST let the user open the raw underlying artifact stored in the workspace, including JSON, Markdown, or HTML outputs."
+    },
+    {
+      "id": "REQ-VSCE-QUALITY-0008",
+      "title": "Navigate local references from quality views",
+      "statement": "Quality and attestation views MUST navigate to related local specification, work-item, verification, requirement, or file targets when those targets are referenced in the local artifacts and exist in the current workspace."
+    },
+    {
+      "id": "REQ-VSCE-QUALITY-0009",
+      "title": "Do not misreport malformed or stale outputs as passing evidence",
+      "statement": "When a quality or attestation artifact is stale, malformed, or missing required local inputs, the extension MUST report that condition as a viewing or evidence-health problem rather than presenting it as passing or failing test evidence."
+    },
+    {
+      "id": "REQ-VSCE-QUALITY-0010",
+      "title": "Allow the user to choose among available local artifacts",
+      "statement": "When multiple local quality snapshots or artifact kinds are available, the extension MUST let the user choose which generated artifact to inspect rather than assuming a single hard-coded file."
+    },
+    {
+      "id": "REQ-VSCE-QUALITY-0011",
+      "title": "Refresh when local quality artifacts change",
+      "statement": "The quality surface MUST refresh when the underlying local quality or attestation artifacts change on disk and MUST preserve the user's selected artifact kind or snapshot when that target still exists."
+    }
+  ]
+}
