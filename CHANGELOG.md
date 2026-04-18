@@ -6,6 +6,12 @@ All notable changes to the Spec Trace extension are documented in this file.
 
 - No unreleased changes yet.
 
+## [1.0.11]
+
+- Expanded the managed markdown authoring surface with class-specific narrative sections for architecture, work-item, and verification artifacts.
+- Broadened canonical trace editing so work items expose separate addressed, design-link, and verification-link lists.
+- Added browser smoke coverage and core round-trip tests for the managed markdown editor surfaces.
+
 ## [1.0.10]
 
 - Expanded browser-safe repository browsing with grouped artifact views, local filtering, trace navigation, and explicit fallback handling for malformed entries.

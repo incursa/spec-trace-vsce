@@ -2,7 +2,7 @@
   "name": "spec-trace-vsce",
   "displayName": "Spec Trace",
   "description": "Browse Spec Trace artifacts and edit specification requirements in a dense custom editor.",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "publisher": "incursa",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {

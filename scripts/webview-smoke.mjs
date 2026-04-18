@@ -84,6 +84,7 @@ async function main() {
 		await verifySupplementalSectionsAddItemKeepsState(frame);
 		await verifyRequirementNotesAddItemKeepsState(frame);
 		await verifySaveAndReloadPersistence(page);
+		await verifyManagedMarkdownSurfaces(page);
 		await verifyQualityView(page);
 	} finally {
 		if (launchedBrowser) {
@@ -191,6 +192,32 @@ async function findCustomEditorFrame(page) {
 	}
 
 	throw new Error('Timed out waiting for the custom editor webview frame.');
+}
+
+async function findManagedMarkdownEditorFrame(page, expectedTraceCardTitle) {
+	const deadline = Date.now() + 30_000;
+	while (Date.now() < deadline) {
+		for (const frame of page.frames()) {
+			let hasEditorSurface = false;
+			try {
+				hasEditorSurface = ((await frame.locator('.editor-shell').count()) > 0
+					&& await frame.locator('.editor-shell').isVisible());
+				if (hasEditorSurface && expectedTraceCardTitle) {
+					hasEditorSurface = ((await frame.locator('section.card').filter({ has: frame.locator('h2').filter({ hasText: expectedTraceCardTitle }) }).count()) > 0);
+				}
+			} catch {
+				hasEditorSurface = false;
+			}
+
+			if (hasEditorSurface) {
+				return frame;
+			}
+		}
+
+		await pause(250);
+	}
+
+	throw new Error('Timed out waiting for the managed markdown editor webview frame.');
 }
 
 async function findQualityViewFrame(page) {
@@ -491,6 +518,89 @@ async function verifySaveAndReloadPersistence(page) {
 	await waitForLocatorText(frame.locator('#sync-chip'), 'Synced');
 }
 
+async function verifyManagedMarkdownSurfaces(page) {
+	await openManagedMarkdownArtifact(page, 'Architectural Views', 'WB', 'ARC-WB-0001');
+	let frame = await findManagedMarkdownEditorFrame(page, 'Architecture trace references');
+	await verifyManagedMarkdownSurface(frame, {
+		artifactId: 'ARC-WB-0001',
+		traceCardTitle: 'Architecture trace references',
+		traceFieldLabels: ['Satisfies'],
+		narrativeLabels: ['Purpose', 'Design Summary'],
+		expectedValidationText: 'No validation issues detected.',
+		pickerExpectations: [
+			{
+				scope: 'trace',
+				fieldLabel: 'Satisfies',
+				expectedOptions: ['REQ-VSCE-BROWSE-0005', 'REQ-VSCE-BROWSE-0011']
+			}
+		]
+	});
+
+	await openManagedMarkdownArtifact(page, 'Work Items', 'WB', 'WI-WB-0001');
+	frame = await findManagedMarkdownEditorFrame(page, 'Work item trace references');
+	await verifyManagedMarkdownSurface(frame, {
+		artifactId: 'WI-WB-0001',
+		traceCardTitle: 'Work item trace references',
+		traceFieldLabels: ['Addresses', 'Design links', 'Verification links'],
+		narrativeLabels: ['Summary', 'Planned Changes', 'Verification Plan'],
+		expectedValidationText: 'No validation issues detected.',
+		pickerExpectations: [
+			{
+				scope: 'metadata',
+				fieldLabel: 'Related artifacts',
+				expectedOptions: ['REQ-VSCE-DOC-EDITOR-0006', 'ARC-WB-0001']
+			},
+			{
+				scope: 'trace',
+				fieldLabel: 'Addresses',
+				expectedOptions: ['REQ-VSCE-DOC-EDITOR-0006', 'REQ-VSCE-DOC-EDITOR-0018']
+			},
+			{
+				scope: 'trace',
+				fieldLabel: 'Design links',
+				expectedOptions: ['ARC-WB-0001']
+			},
+			{
+				scope: 'trace',
+				fieldLabel: 'Verification links',
+				expectedOptions: ['VER-WB-0001']
+			}
+		]
+	});
+	await verifyManagedMarkdownReferenceNavigation(frame, page, {
+		fieldLabel: 'Related artifacts',
+		targetToken: 'ARC-WB-0001',
+		expectedArtifactId: 'ARC-WB-0001',
+		expectedTraceCardTitle: 'Architecture trace references',
+		expectedTraceFieldLabels: ['Satisfies'],
+		expectedNarrativeLabels: ['Purpose', 'Design Summary'],
+		expectedPickerExpectations: [
+			{
+				scope: 'trace',
+				fieldLabel: 'Satisfies',
+				expectedOptions: ['REQ-VSCE-BROWSE-0005', 'REQ-VSCE-BROWSE-0011']
+			}
+		]
+	});
+
+	await openManagedMarkdownArtifact(page, 'Verification Documents', 'WB', 'VER-WB-0001');
+	frame = await findManagedMarkdownEditorFrame(page, 'Verification trace references');
+	await verifyManagedMarkdownSurface(frame, {
+		artifactId: 'VER-WB-0001',
+		traceCardTitle: 'Verification trace references',
+		traceFieldLabels: ['Verifies'],
+		narrativeLabels: ['Scope', 'Verification Method', 'Procedure', 'Expected Result'],
+		expectedValidationText: 'No validation issues detected.',
+		pickerExpectations: [
+			{
+				scope: 'trace',
+				fieldLabel: 'Verifies',
+				expectedOptions: ['REQ-VSCE-QUALITY-0005', 'REQ-VSCE-QUALITY-0008']
+			}
+		]
+	});
+}
+
 async function verifyQualityView(page) {
 	assert.ok(qualitySmokeState, 'Quality smoke fixture state should be initialized.');
 
@@ -511,6 +621,141 @@ async function verifyQualityView(page) {
 	await waitForLocatorTextContains(frame.locator('#summary-card'), qualitySmokeState.intentRelativePath);
 	await waitForLocatorTextContains(frame.locator('#status-chips'), 'testing_intent');
 	await captureSmokeScreenshot(frame, 'quality-view');
+}
+
+async function openManagedMarkdownArtifact(page, categoryLabel, domainLabel, artifactLabel) {
+	const treeItems = page.locator('.part.sidebar [role="treeitem"]');
+	let nodes = await readTreeNodes(page);
+	const categoryIndex = findTreeNodeIndex(nodes, (node) => node.name === categoryLabel);
+	if (categoryIndex < 0) {
+		throw new Error(`Timed out waiting for category ${categoryLabel}.`);
+	}
+
+	let domainIndex = findTreeNodeIndex(nodes, (node, index) => index > categoryIndex && node.name === domainLabel);
+	if (domainIndex < 0) {
+		throw new Error(`Timed out waiting for domain ${domainLabel} under ${categoryLabel}.`);
+	}
+
+	await ensureTreeRowExpanded(treeItems.nth(domainIndex));
+
+	nodes = await readTreeNodes(page);
+	domainIndex = findTreeNodeIndex(nodes, (node, index) => index > categoryIndex && node.name === domainLabel);
+	const artifactIndex = findTreeNodeIndex(nodes, (node, index) => index > domainIndex && node.name === artifactLabel);
+	if (artifactIndex < 0) {
+		throw new Error(`Timed out waiting for artifact ${artifactLabel} under ${categoryLabel}/${domainLabel}.`);
+	}
+
+	await treeItems.nth(artifactIndex).click();
+}
+
+async function ensureTreeRowExpanded(row) {
+	if (await isTreeRowExpanded(row)) {
+		return;
+	}
+
+	await row.locator('.monaco-tl-twistie').click({ force: true });
+	await waitForTreeRowExpanded(row);
+}
+
+async function isTreeRowExpanded(row) {
+	return row.evaluate((element) => element.getAttribute('aria-expanded') === 'true').catch(() => false);
+}
+
+function findTreeNodeIndex(nodes, predicate) {
+	return nodes.findIndex(predicate);
+}
+
+async function verifyManagedMarkdownSurface(frame, expected) {
+	await frame.locator('.editor-shell').waitFor({ state: 'visible', timeout: 10_000 });
+	await waitForLocatorTextContains(frame.locator('.editor-shell'), expected.artifactId);
+
+	const validationCard = getManagedMarkdownCard(frame, 'Validation');
+	await waitForLocatorTextContains(validationCard, expected.expectedValidationText);
+
+	const metadataCard = getManagedMarkdownCard(frame, 'Canonical fields');
+	await assertCardLabels(metadataCard, [
+		'artifact_id',
+		'artifact_type',
+		'Title',
+		'Domain',
+		'Status',
+		'Owner',
+		'Summary',
+		'Related artifacts'
+	]);
+
+	const traceCard = getManagedMarkdownCard(frame, expected.traceCardTitle);
+	await assertCardLabels(traceCard, expected.traceFieldLabels);
+	for (const pickerExpectation of expected.pickerExpectations ?? []) {
+		const card = pickerExpectation.scope === 'metadata' ? metadataCard : traceCard;
+		const field = getManagedMarkdownField(card, pickerExpectation.fieldLabel);
+		await assertSelectOptionsContain(field.locator('select').first(), pickerExpectation.expectedOptions);
+	}
+
+	const narrativeCard = getManagedMarkdownCard(frame, 'Narrative sections');
+	await assertCardLabels(narrativeCard, expected.narrativeLabels);
+
+	const previewCard = getManagedMarkdownCard(frame, 'Markdown preview');
+	await waitForDetailsState(previewCard.locator('details').first(), false, 'Markdown preview should stay collapsed by default.');
+}
+
+async function verifyManagedMarkdownReferenceNavigation(frame, page, expected) {
+	const relatedField = getManagedMarkdownField(frame, expected.fieldLabel);
+	await assertSelectOptionsContain(relatedField.locator('select').first(), ['REQ-VSCE-DOC-EDITOR-0006', 'ARC-WB-0001']);
+
+	const targetIndex = await relatedField.locator('.list-item').evaluateAll((items, token) => items.findIndex((item) => {
+		const input = item.querySelector('input');
+		return input instanceof HTMLInputElement && input.value.trim() === token;
+	}), expected.targetToken);
+	if (targetIndex < 0) {
+		throw new Error(`Unable to find reference item ${expected.targetToken} in ${expected.fieldLabel}.`);
+	}
+
+	await relatedField.locator('.list-item').nth(targetIndex).locator('button', { hasText: 'Open' }).click();
+
+	const openedFrame = await findManagedMarkdownEditorFrame(page, expected.expectedTraceCardTitle);
+	await verifyManagedMarkdownSurface(openedFrame, {
+		artifactId: expected.expectedArtifactId,
+		traceCardTitle: expected.expectedTraceCardTitle,
+		traceFieldLabels: expected.expectedTraceFieldLabels,
+		narrativeLabels: expected.expectedNarrativeLabels,
+		expectedValidationText: 'No validation issues detected.',
+		pickerExpectations: expected.expectedPickerExpectations
+	});
+}
+
+async function assertSelectOptionsContain(select, expectedTexts) {
+	const deadline = Date.now() + 30_000;
+	let optionTexts = [];
+	while (Date.now() < deadline) {
+		optionTexts = await select.locator('option').evaluateAll((elements) => elements.map((element) => element.textContent?.trim() ?? ''));
+		if (expectedTexts.every((expectedText) => optionTexts.some((text) => text.includes(expectedText)))) {
+			return;
+		}
+		await pause(100);
+	}
+
+	for (const expectedText of expectedTexts) {
+		if (!optionTexts.some((text) => text.includes(expectedText))) {
+			const selectMarkup = await select.evaluate((element) => element.outerHTML).catch(() => '<unavailable>');
+			throw new Error(`Expected select options to include ${expectedText}, got: ${optionTexts.join(' | ')}\nSelect markup: ${selectMarkup}`);
+		}
+	}
+}
+
+function getManagedMarkdownCard(frame, title) {
+	return frame.locator('h2').filter({ hasText: title }).locator('xpath=ancestor::section[contains(@class,"card")][1]');
+}
+
+function getManagedMarkdownField(card, label) {
+	return card.locator('label').filter({ hasText: label }).locator('xpath=ancestor::div[contains(@class,"field")][1]');
+}
+
+async function assertCardLabels(card, expectedLabels) {
+	const labelTexts = await card.locator('label').evaluateAll((elements) => elements.map((element) => element.textContent?.trim() ?? ''));
+	for (const expectedLabel of expectedLabels) {
+		assert.ok(labelTexts.includes(expectedLabel), `Expected ${expectedLabel} in ${labelTexts.join(' | ')}`);
+	}
 }
 
 async function titleInputReload(frame, expectedTitle) {
@@ -602,32 +847,79 @@ async function createSmokeWorkspace() {
 	await copySmokeFixture(workspaceRoot, path.join('specs', 'requirements', '_index.md'));
 	await copySmokeFixture(workspaceRoot, path.join('specs', 'requirements', 'spec-trace-vsce', '_index.md'));
 	await copySmokeFixture(workspaceRoot, path.join('specs', 'requirements', 'spec-trace-vsce', 'SPEC-VSCE-EDITOR.json'));
+	await copySmokeFixture(workspaceRoot, path.join('specs', 'requirements', 'spec-trace-vsce', 'SPEC-VSCE-BROWSE.json'));
+	await copySmokeFixture(workspaceRoot, path.join('specs', 'requirements', 'spec-trace-vsce', 'SPEC-VSCE-DOC-EDITOR.json'));
+	await copySmokeFixture(workspaceRoot, path.join('specs', 'requirements', 'spec-trace-vsce', 'SPEC-VSCE-QUALITY.json'));
+	await copySmokeFixture(workspaceRoot, path.join('specs', 'requirements', 'spec-trace-vsce', 'SPEC-VSCE-MANAGEMENT.json'));
 	coverageSmokeState = await seedCoverageEvidence(workspaceRoot);
 	qualitySmokeState = await seedQualityEvidence(workspaceRoot);
 	await copySmokeFixture(workspaceRoot, path.join('specs', 'architecture', 'WB', '_index.md'));
 	await copySmokeFixture(workspaceRoot, path.join('specs', 'work-items', 'WB', '_index.md'));
 	await copySmokeFixture(workspaceRoot, path.join('specs', 'verification', 'WB', '_index.md'));
 
-	await writeSmokeMarkdown(
+	await writeSmokeManagedMarkdown(
 		workspaceRoot,
 		path.join('specs', 'architecture', 'WB', 'ARC-WB-0001.md'),
-		'ARC-WB-0001',
-		'Repository navigation architecture',
-		'The tree view MUST expose repository navigation from the sidebar.'
+		{
+			artifactId: 'ARC-WB-0001',
+			artifactType: 'architecture',
+			domain: 'WB',
+			title: 'Repository navigation architecture',
+			owner: 'wb-maintainers',
+			status: 'draft',
+			summary: 'Describe the repository navigation architecture for the browser smoke workspace.',
+			relatedArtifacts: ['REQ-VSCE-BROWSE-0005', 'SPEC-VSCE-EDITOR'],
+			traceReferences: ['REQ-VSCE-BROWSE-0005', 'REQ-VSCE-BROWSE-0011'],
+			sections: {
+				purpose: 'Repository browsing should stay local and grouped by artifact class.',
+				design_summary: 'The explorer groups requirements, architecture, work items, and verification documents by domain and opens each artifact in the managed surface.'
+			}
+		}
 	);
-	await writeSmokeMarkdown(
+	await writeSmokeManagedMarkdown(
 		workspaceRoot,
 		path.join('specs', 'work-items', 'WB', 'WI-WB-0001.md'),
-		'WI-WB-0001',
-		'Add repository tree view',
-		'The extension MUST add a tree view for specifications and related artifacts.'
+		{
+			artifactId: 'WI-WB-0001',
+			artifactType: 'work_item',
+			domain: 'WB',
+			title: 'Add repository tree view',
+			owner: 'wb-maintainers',
+			status: 'planned',
+			summary: 'Implement the repository explorer surface for local Spec Trace artifacts.',
+			relatedArtifacts: ['REQ-VSCE-DOC-EDITOR-0006', 'ARC-WB-0001'],
+			traceReferences: ['REQ-VSCE-DOC-EDITOR-0006', 'REQ-VSCE-DOC-EDITOR-0018'],
+			additionalLists: {
+				design_links: ['ARC-WB-0001'],
+				verification_links: ['VER-WB-0001']
+			},
+			sections: {
+				summary: 'Implement the repository explorer surface for local Spec Trace artifacts.',
+				planned_changes: 'Add category-grouped browsing, local filtering, and managed markdown navigation.',
+				verification_plan: 'Verify the explorer can open the managed markdown editors and navigate local references.'
+			}
+		}
 	);
-	await writeSmokeMarkdown(
+	await writeSmokeManagedMarkdown(
 		workspaceRoot,
 		path.join('specs', 'verification', 'WB', 'VER-WB-0001.md'),
-		'VER-WB-0001',
-		'Tree view smoke verification',
-		'The tree view MUST surface category, domain, and document nodes.'
+		{
+			artifactId: 'VER-WB-0001',
+			artifactType: 'verification',
+			domain: 'WB',
+			title: 'Tree view smoke verification',
+			owner: 'wb-maintainers',
+			status: 'planned',
+			summary: 'Verify the repository explorer and managed markdown surfaces remain browser-safe.',
+			relatedArtifacts: ['REQ-VSCE-QUALITY-0005', 'WI-WB-0001'],
+			traceReferences: ['REQ-VSCE-QUALITY-0005', 'REQ-VSCE-QUALITY-0008'],
+			sections: {
+				scope: 'Verify the browser-safe repository explorer and managed markdown authoring surfaces.',
+				verification_method: 'Run the browser smoke test inside VS Code web.',
+				procedure: 'Open the repository explorer, open the managed markdown artifacts, and inspect their trace fields.',
+				expected_result: 'Each managed markdown artifact opens in the custom editor with the expected fields and sections.'
+			}
+		}
 	);
 
 	return workspaceRoot;
@@ -785,18 +1077,80 @@ async function copySmokeFixture(workspaceRoot, relativePath) {
 	await fs.copyFile(sourcePath, destinationPath);
 }
 
-async function writeSmokeMarkdown(workspaceRoot, relativePath, artifactId, title, statement) {
+async function writeSmokeManagedMarkdown(workspaceRoot, relativePath, artifact) {
 	const destinationPath = path.join(workspaceRoot, relativePath);
 	await fs.mkdir(path.dirname(destinationPath), { recursive: true });
-	await fs.writeFile(destinationPath, [
-		'---',
-		`artifact_id: ${artifactId}`,
-		`title: ${title}`,
-		'---',
-		'',
-		statement,
-		''
-	].join('\n'));
+	const lines = ['---'];
+	lines.push(`artifact_id: ${artifact.artifactId}`);
+	lines.push(`artifact_type: ${artifact.artifactType}`);
+	lines.push(`title: ${artifact.title}`);
+	lines.push(`domain: ${artifact.domain}`);
+	lines.push(`status: ${artifact.status}`);
+	lines.push(`owner: ${artifact.owner}`);
+	lines.push(`summary: ${artifact.summary}`);
+	appendMarkdownFrontMatterList(lines, 'related_artifacts', artifact.relatedArtifacts ?? []);
+	appendMarkdownFrontMatterList(lines, primaryTraceFieldName(artifact.artifactType), artifact.traceReferences ?? []);
+	if (artifact.artifactType === 'work_item') {
+		const additionalLists = artifact.additionalLists ?? {};
+		appendMarkdownFrontMatterList(lines, 'design_links', additionalLists.design_links ?? []);
+		appendMarkdownFrontMatterList(lines, 'verification_links', additionalLists.verification_links ?? []);
+	}
+	lines.push('---', '');
+	for (const [heading, content] of Object.entries(artifact.sections)) {
+		lines.push(`## ${markdownHeadingForSectionKey(heading)}`);
+		lines.push('');
+		lines.push(content);
+		lines.push('');
+	}
+	await fs.writeFile(destinationPath, `${lines.join('\n').replace(/\n+$/u, '\n')}`);
+}
+
+function primaryTraceFieldName(artifactType) {
+	switch (artifactType) {
+		case 'architecture':
+			return 'satisfies';
+		case 'work_item':
+			return 'addresses';
+		case 'verification':
+			return 'verifies';
+	}
+}
+
+function appendMarkdownFrontMatterList(lines, key, values) {
+	if (!Array.isArray(values) || values.length === 0) {
+		lines.push(`${key}: []`);
+		return;
+	}
+
+	lines.push(`${key}:`);
+	for (const value of values) {
+		lines.push(`  - ${value}`);
+	}
+}
+
+function markdownHeadingForSectionKey(key) {
+	switch (key) {
+		case 'purpose':
+			return 'Purpose';
+		case 'design_summary':
+			return 'Design Summary';
+		case 'summary':
+			return 'Summary';
+		case 'planned_changes':
+			return 'Planned Changes';
+		case 'verification_plan':
+			return 'Verification Plan';
+		case 'scope':
+			return 'Scope';
+		case 'verification_method':
+			return 'Verification Method';
+		case 'procedure':
+			return 'Procedure';
+		case 'expected_result':
+			return 'Expected Result';
+		default:
+			return key;
+	}
 }
 
 async function cleanupSmokeWorkspace(workspaceRoot) {

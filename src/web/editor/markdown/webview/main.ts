@@ -3,7 +3,6 @@
 import {
 	getManagedMarkdownSectionHeading,
 	getManagedMarkdownSectionKeys,
-	getTraceFieldForArtifactType,
 	serializeManagedMarkdownDocument,
 	type ManagedMarkdownArtifactType,
 	type ManagedMarkdownDocument,
@@ -202,7 +201,7 @@ function createMetadataCard(): HTMLElement {
 			documentState.summary = value;
 			commitCurrentDocument();
 		}, true),
-		createListEditor('related_artifacts', 'Related artifacts', 'Local artifact identifiers or repo-relative paths.', documentState.related_artifacts ?? [], 'artifact')
+		createListEditor('related_artifacts', 'Related artifacts', 'Local artifact or requirement identifiers, or repo-relative paths.', documentState.related_artifacts ?? [], 'all')
 	);
 
 	body.append(grid);
@@ -216,19 +215,27 @@ function createTraceCard(): HTMLElement {
 
 	const documentState = currentDocument!;
 	const artifactType = currentDocument.artifact_type;
-	const traceField = getTraceFieldForArtifactType(artifactType);
+	const traceFieldConfigs = getTraceFieldConfigsForArtifactType(artifactType);
 	const traceSectionKeys = getManagedMarkdownSectionKeys(artifactType);
-	const traceLabel = traceFieldLabel(traceField);
-	const card = createCard('Trace references', `Managed trace references for the ${artifactType} artifact.`);
+	const card = createCard(traceCardTitleForArtifactType(artifactType), traceCardDescriptionForArtifactType(artifactType));
 	const body = card.querySelector('.card__body');
 	if (!body) {
 		return card;
 	}
 
-	body.append(
-		createListEditor(traceField, traceLabel, `Local references used by ${traceLabel.toLowerCase()}.`, getListValues(traceField), traceField === 'design_links' || traceField === 'verification_links' ? 'artifact' : 'requirement'),
-		createSectionHint(traceSectionKeys)
-	);
+	for (const traceFieldConfig of traceFieldConfigs) {
+		body.append(
+			createListEditor(
+				traceFieldConfig.fieldName,
+				traceFieldConfig.label,
+				traceFieldConfig.description,
+				getListValues(traceFieldConfig.fieldName),
+				traceFieldConfig.pickerKind
+			)
+		);
+	}
+
+	body.append(createSectionHint(traceSectionKeys));
 	return card;
 }
 
@@ -737,18 +744,72 @@ function isKnownReference(value: string): boolean {
 	return referenceChoices.some((choice) => choice.value === value.trim() || choice.label === value.trim());
 }
 
-function traceFieldLabel(field: ReturnType<typeof getTraceFieldForArtifactType>): string {
-	switch (field) {
-		case 'satisfies':
-			return 'Satisfies';
-		case 'addresses':
-			return 'Addresses';
-		case 'design_links':
-			return 'Design links';
-		case 'verification_links':
-			return 'Verification links';
-		case 'verifies':
-			return 'Verifies';
+interface TraceFieldConfig {
+	readonly fieldName: ReferenceFieldName;
+	readonly label: string;
+	readonly description: string;
+	readonly pickerKind: 'all' | 'artifact' | 'requirement';
+}
+
+function getTraceFieldConfigsForArtifactType(artifactType: ManagedMarkdownArtifactType): readonly TraceFieldConfig[] {
+	switch (artifactType) {
+		case 'architecture':
+			return [{
+				fieldName: 'satisfies',
+				label: 'Satisfies',
+				description: 'Local requirements satisfied by this architecture artifact.',
+				pickerKind: 'requirement'
+			}];
+		case 'work_item':
+			return [
+				{
+					fieldName: 'addresses',
+					label: 'Addresses',
+					description: 'Local requirements addressed by this work item.',
+					pickerKind: 'requirement'
+				},
+				{
+					fieldName: 'design_links',
+					label: 'Design links',
+					description: 'Local architecture or design artifacts that inform this work item.',
+					pickerKind: 'artifact'
+				},
+				{
+					fieldName: 'verification_links',
+					label: 'Verification links',
+					description: 'Local verification artifacts or plans that validate this work item.',
+					pickerKind: 'artifact'
+				}
+			];
+		case 'verification':
+			return [{
+				fieldName: 'verifies',
+				label: 'Verifies',
+				description: 'Local requirements verified by this document.',
+				pickerKind: 'requirement'
+			}];
+	}
+}
+
+function traceCardTitleForArtifactType(artifactType: ManagedMarkdownArtifactType): string {
+	switch (artifactType) {
+		case 'architecture':
+			return 'Architecture trace references';
+		case 'work_item':
+			return 'Work item trace references';
+		case 'verification':
+			return 'Verification trace references';
+	}
+}
+
+function traceCardDescriptionForArtifactType(artifactType: ManagedMarkdownArtifactType): string {
+	switch (artifactType) {
+		case 'architecture':
+			return 'Architecture artifacts keep requirement trace separate from the authored design narrative.';
+		case 'work_item':
+			return 'Work items expose addressed requirements, design links, and verification links as distinct lists.';
+		case 'verification':
+			return 'Verification artifacts keep the verified requirements separate from the authored procedure.';
 	}
 }
 
