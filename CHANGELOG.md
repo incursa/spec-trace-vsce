@@ -6,6 +6,11 @@ All notable changes to the Spec Trace extension are documented in this file.
 
 - No unreleased changes yet.
 
+## [1.0.12]
+
+- Managed architecture, work-item, and verification markdown files now open in the custom editor by default when opened normally from the workspace.
+- Plain-text fallback remains available through the Open With flow for managed markdown files.
+
 ## [1.0.11]
 
 - Expanded the managed markdown authoring surface with class-specific narrative sections for architecture, work-item, and verification artifacts.

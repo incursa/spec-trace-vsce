@@ -84,6 +84,7 @@ async function main() {
 		await verifySupplementalSectionsAddItemKeepsState(frame);
 		await verifyRequirementNotesAddItemKeepsState(frame);
 		await verifySaveAndReloadPersistence(page);
+		await verifyManagedMarkdownDefaultOpen(page);
 		await verifyManagedMarkdownSurfaces(page);
 		await verifyQualityView(page);
 	} finally {
@@ -601,6 +602,27 @@ async function verifyManagedMarkdownSurfaces(page) {
 	});
 }
 
+async function verifyManagedMarkdownDefaultOpen(page) {
+	await closeActiveEditor(page);
+	await openFileByQuickOpen(page, path.join('specs', 'architecture', 'WB', 'ARC-WB-0001.md'));
+
+	const frame = await findManagedMarkdownEditorFrame(page, 'Architecture trace references');
+	await verifyManagedMarkdownSurface(frame, {
+		artifactId: 'ARC-WB-0001',
+		traceCardTitle: 'Architecture trace references',
+		traceFieldLabels: ['Satisfies'],
+		narrativeLabels: ['Purpose', 'Design Summary'],
+		expectedValidationText: 'No validation issues detected.',
+		pickerExpectations: [
+			{
+				scope: 'trace',
+				fieldLabel: 'Satisfies',
+				expectedOptions: ['REQ-VSCE-BROWSE-0005', 'REQ-VSCE-BROWSE-0011']
+			}
+		]
+	});
+}
+
 async function verifyQualityView(page) {
 	assert.ok(qualitySmokeState, 'Quality smoke fixture state should be initialized.');
 
@@ -821,6 +843,29 @@ async function closeActiveEditor(page) {
 	await runCommandPaletteCommand(page, 'Close Editor');
 	await page.keyboard.press('Escape');
 	await pause(500);
+}
+
+async function openFileByQuickOpen(page, relativePath) {
+	const normalizedRelativePath = relativePath.replace(/\\/g, '/');
+	await page.keyboard.press(process.platform === 'darwin' ? 'Meta+P' : 'Control+P');
+	const quickOpenInput = page.locator('.quick-input-widget input').first();
+	await quickOpenInput.waitFor({ state: 'visible', timeout: 10_000 });
+	await quickOpenInput.fill(normalizedRelativePath);
+	await page.locator('.quick-input-widget [role="option"]').first().waitFor({ state: 'visible', timeout: 10_000 });
+
+	const optionTexts = await page.locator('.quick-input-widget [role="option"]').evaluateAll((elements) => elements.map((element) => element.textContent?.trim() ?? ''));
+	const matchingIndex = optionTexts.findIndex((text) => {
+		const normalizedText = text.replace(/\\/g, '/');
+		return normalizedText.includes(normalizedRelativePath) || normalizedText.includes(path.basename(normalizedRelativePath));
+	});
+	if (matchingIndex < 0) {
+		throw new Error(`Quick open did not surface ${normalizedRelativePath}; saw: ${optionTexts.join(' | ')}`);
+	}
+
+	await quickOpenInput.press('ArrowDown');
+	await pause(100);
+	await quickOpenInput.press('Enter');
+	return;
 }
 
 async function runCommandPaletteCommand(page, commandLabel) {
