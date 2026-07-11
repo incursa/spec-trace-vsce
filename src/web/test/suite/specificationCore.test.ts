@@ -91,10 +91,12 @@ suite('Specification core', () => {
 						positive: 'required',
 						negative: 'optional',
 						edge: 'required',
-						fuzz: 'deferred'
+						fuzz: 'deferred',
+						x_coverage_origin: 'local-review'
 					},
 					trace: {
-						related: ['SPEC-VSCE-EDITOR']
+						related: ['SPEC-VSCE-EDITOR'],
+						x_trace_origin: 'local-review'
 					},
 					notes: ['Seed note']
 				}
@@ -139,10 +141,12 @@ suite('Specification core', () => {
 						positive: 'required',
 						negative: 'optional',
 						edge: 'required',
-						fuzz: 'deferred'
+						fuzz: 'deferred',
+						x_coverage_origin: 'local-review'
 					},
 					trace: {
-						related: ['SPEC-VSCE-EDITOR']
+						related: ['SPEC-VSCE-EDITOR'],
+						x_trace_origin: 'local-review'
 					},
 					notes: [],
 					x_reviewed: true
@@ -156,7 +160,11 @@ suite('Specification core', () => {
 
 		const payload = JSON.parse(serialized) as {
 			x_custom: { enabled: boolean; sequence: number[] };
-			requirements: Array<{ x_reviewed: boolean }>;
+			requirements: Array<{
+				x_reviewed: boolean;
+				coverage: { x_coverage_origin: string };
+				trace: { x_trace_origin: string };
+			}>;
 		};
 
 		assert.strictEqual(serialized.startsWith('{\n  "artifact_id"'), true);
@@ -165,6 +173,8 @@ suite('Specification core', () => {
 		assert.ok(!serialized.includes('"related_artifacts"'));
 		assert.deepStrictEqual(payload.x_custom, { enabled: true, sequence: [2, 1] });
 		assert.strictEqual(payload.requirements[0].x_reviewed, true);
+		assert.strictEqual(payload.requirements[0].coverage.x_coverage_origin, 'local-review');
+		assert.strictEqual(payload.requirements[0].trace.x_trace_origin, 'local-review');
 	});
 
 	test('summarizes requirement coverage with trimmed string semantics', () => {

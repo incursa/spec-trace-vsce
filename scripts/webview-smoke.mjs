@@ -80,6 +80,7 @@ async function main() {
 		await verifyRequirementIndexSearchAndFilter(frame);
 		await verifyCoverageSummaryAndDrillDown(frame);
 		await verifyRequirementDetailNavigation(frame);
+		await verifyNarrowRequirementLayout(page, frame);
 		await verifyOpenQuestionsAddItemKeepsState(frame);
 		await verifySupplementalSectionsAddItemKeepsState(frame);
 		await verifyRequirementNotesAddItemKeepsState(frame);
@@ -368,7 +369,9 @@ async function verifyCollapsedDefaults(frame) {
 	assert.equal(await isDetailsOpen(openQuestions), false, 'Open questions should start collapsed.');
 	assert.equal(await isDetailsOpen(supplementalSections), false, 'Supplemental sections should start collapsed.');
 	await requirementIndexRow.waitFor({ state: 'visible' });
-	assert.equal(await requirementDetail.count(), 0, 'Requirement detail should not be visible in the default index view.');
+	assert.equal(await requirementDetail.count(), 1, 'Selected requirement inspector should be visible beside the default register.');
+	await waitForLocatorText(frame.locator('#validation-chip'), 'No validation issues');
+	assert.equal(await frame.locator('#validation-summary').isHidden(), true, 'A zero-issue validation summary should remain hidden.');
 }
 
 async function verifyCoverageSummaryAndDrillDown(frame) {
@@ -416,6 +419,7 @@ async function verifyOpenQuestionsAddItemKeepsState(frame) {
 
 	await openQuestions.locator('inc-button').click();
 	await pause(250);
+	await frame.locator('[data-card-path="open_questions"] input').last().fill('Confirm the local-only authoring workflow.');
 
 	await waitForDetailsState(frame.locator('[data-card-path="open_questions"]'), true, 'Adding an open question should not collapse the section.');
 	await captureSmokeScreenshot(frame, 'open-questions-added');
@@ -428,6 +432,9 @@ async function verifySupplementalSectionsAddItemKeepsState(frame) {
 
 	await supplementalSections.locator('inc-button').click();
 	await pause(250);
+	const addedSection = frame.locator('[data-card-path="supplemental_sections"] .supplemental-section-row').last();
+	await addedSection.locator('input').fill('Local authoring note');
+	await addedSection.locator('textarea').fill('This section verifies structured local editing and deterministic persistence.');
 
 	await waitForDetailsState(
 		frame.locator('[data-card-path="supplemental_sections"]'),
@@ -440,31 +447,71 @@ async function verifySupplementalSectionsAddItemKeepsState(frame) {
 async function verifyRequirementDetailNavigation(frame) {
 	assert.ok(coverageSmokeState, 'Coverage smoke fixture state should be initialized.');
 	const firstRequirementRow = frame.locator('.requirement-index-row').first();
-	await firstRequirementRow.click();
+	await firstRequirementRow.locator('.requirement-index-open').click();
 	await frame.locator('.requirement-detail-card').waitFor({ state: 'visible' });
 	await captureSmokeScreenshot(frame, 'requirement-detail');
+
+	await frame.locator('inc-button', { hasText: 'Reading' }).click();
+	await waitForLocatorText(frame.locator('.requirement-register-view-description'), 'Text-focused reading view');
+	assert.ok(await frame.locator('.requirement-register--reading .requirement-summary-statement').first().isVisible(), 'Reading view should show the requirement statement.');
+	await frame.locator('inc-button', { hasText: 'Overview' }).click();
+	await waitForLocatorText(frame.locator('.requirement-register-view-description'), 'Local coverage and validation overview');
 
 	await frame.locator('inc-button', { hasText: 'Next' }).click();
 	await waitForLocatorText(frame.locator('#selected-requirement-subtitle'), `${coverageSmokeState.partialRequirementId} · 2 of ${coverageSmokeState.totalRequirements}`);
 
 	await frame.locator('inc-button', { hasText: 'Previous' }).click();
 	await waitForLocatorText(frame.locator('#selected-requirement-subtitle'), `${coverageSmokeState.coveredRequirementId} · 1 of ${coverageSmokeState.totalRequirements}`);
+}
 
-	await frame.locator('inc-button[label="Return to the requirements index"]').click();
-	await frame.locator('.requirement-index-row').first().waitFor({ state: 'visible' });
+async function verifyNarrowRequirementLayout(page, frame) {
+	await page.setViewportSize({ width: 900, height: 1000 });
+	await pause(250);
+	const layout = await frame.locator('body').evaluate((body) => {
+		const inspector = document.querySelector('.requirement-register-inspector');
+		return {
+			scrollWidth: body.scrollWidth,
+			clientWidth: body.clientWidth,
+			inspectorPosition: inspector ? getComputedStyle(inspector).position : ''
+		};
+	});
+	assert.ok(layout.scrollWidth <= layout.clientWidth + 1, `Narrow requirements layout should not scroll horizontally: ${JSON.stringify(layout)}`);
+	assert.equal(layout.inspectorPosition, 'static', 'Narrow requirements inspector should stack instead of remaining sticky.');
+	await page.setViewportSize({ width: 1600, height: 1200 });
+	await pause(250);
 }
 
 async function verifyRequirementNotesAddItemKeepsState(frame) {
 	const firstRequirementRow = frame.locator('.requirement-index-row').first();
-	await firstRequirementRow.click();
+	await firstRequirementRow.locator('.requirement-index-open').click();
 	await frame.locator('.requirement-detail-card').waitFor({ state: 'visible' });
 	await frame.locator('inc-button', { hasText: 'Edit requirement' }).click();
 	await frame.locator('inc-button[variant="primary"]').waitFor({ state: 'visible' });
 	await waitForLocatorText(frame.locator('#selected-requirement-subtitle'), `${coverageSmokeState.coveredRequirementId} · 1 of ${coverageSmokeState.totalRequirements}`);
+	await captureSmokeScreenshot(frame, 'requirement-editor');
+
+	const fuzzCoverage = frame.locator('[data-validation-path$=".coverage.fuzz"] select');
+	await fuzzCoverage.selectOption('deferred');
+	await pause(250);
+	assert.equal(await frame.locator('[data-validation-path$=".coverage.fuzz"] select').inputValue(), 'deferred', 'Coverage selection should survive the host sync round-trip.');
+	const upstreamTrace = frame.locator('[data-validation-path$=".trace.upstream_refs"]');
+	await upstreamTrace.locator('inc-button', { hasText: 'Add reference' }).click();
+	await pause(250);
+	const upstreamInput = frame.locator('[data-validation-path$=".trace.upstream_refs"] input');
+	await upstreamInput.pressSequentially('RFC-9000#section-1', { delay: 10 });
+	assert.equal(await upstreamInput.inputValue(), 'RFC-9000#section-1', 'Trace input should retain focus and every sequentially typed character.');
+	await upstreamInput.press('Control+S');
+	await waitForLocatorText(frame.locator('#dirty-chip'), 'Clean');
+	assert.equal(await frame.locator('[data-validation-path$=".trace.upstream_refs"] input').inputValue(), 'RFC-9000#section-1', 'Ctrl+S should save the focused trace input without losing its value.');
 
 	const notesField = frame.locator('.requirement-detail-card [data-validation-path$=".notes"]').first();
 	await notesField.locator('inc-button').click();
 	await pause(250);
+	await frame.locator('.requirement-detail-card [data-validation-path$=".notes"] textarea').last().fill('Verified through the local requirements workspace.');
+	await waitForLocatorText(frame.locator('#dirty-chip'), 'Dirty');
+	await frame.locator('inc-button', { hasText: 'Save' }).click();
+	await waitForLocatorText(frame.locator('#dirty-chip'), 'Clean');
+	await waitForLocatorText(frame.locator('#sync-chip'), 'Synced');
 
 	await waitForLocatorText(frame.locator('#selected-requirement-subtitle'), `${coverageSmokeState.coveredRequirementId} · 1 of ${coverageSmokeState.totalRequirements}`);
 	await frame.locator('inc-button[label="Return to the read-only requirement details page"]').click();
@@ -474,8 +521,7 @@ async function verifyRequirementNotesAddItemKeepsState(frame) {
 }
 
 async function verifySaveAndReloadPersistence(page) {
-	await page.reload({ waitUntil: 'domcontentloaded' });
-	await page.locator('.monaco-workbench').waitFor({ state: 'visible' });
+	await closeActiveEditor(page);
 	await openRepositoryExplorer(page);
 	await openTargetFile(page);
 
@@ -483,6 +529,13 @@ async function verifySaveAndReloadPersistence(page) {
 	const documentFields = frame.locator('[data-card-path="document-fields"]');
 	await waitForLocatorText(frame.locator('#dirty-chip'), 'Clean');
 	await waitForLocatorText(frame.locator('#sync-chip'), 'Synced');
+
+	await frame.locator('.requirement-index-row').first().locator('.requirement-index-open').click();
+	await frame.locator('inc-button', { hasText: 'Edit requirement' }).click();
+	assert.equal(await frame.locator('[data-validation-path$=".coverage.fuzz"] select').inputValue(), 'deferred', 'Typed coverage edits should survive save and reload.');
+	assert.equal(await frame.locator('[data-validation-path$=".trace.upstream_refs"] input').inputValue(), 'RFC-9000#section-1', 'Typed trace edits should survive save and reload.');
+	await frame.locator('inc-button[label="Return to the read-only requirement details page"]').click();
+	await frame.locator('inc-button[label="Return to the requirements index"]').click();
 	if (!(await isDetailsOpen(documentFields))) {
 		await documentFields.locator('summary').click();
 	}
@@ -494,10 +547,10 @@ async function verifySaveAndReloadPersistence(page) {
 
 	await titleInput.fill(persistedTitle);
 	await waitForLocatorText(frame.locator('#dirty-chip'), 'Dirty');
-	await frame.locator('.requirement-index-row').first().click();
+	await frame.locator('.requirement-index-row').first().locator('.requirement-index-open').click();
 	await frame.locator('.requirement-detail-card').waitFor({ state: 'visible' });
 	await frame.locator('inc-button', { hasText: 'Edit requirement' }).click();
-	await frame.locator('inc-button[variant="primary"]').click();
+	await frame.locator('inc-button', { hasText: 'Save' }).click();
 	await waitForLocatorText(frame.locator('#dirty-chip'), 'Clean');
 	await waitForLocatorText(frame.locator('#sync-chip'), 'Synced');
 	await frame.locator('inc-button[label="Return to the read-only requirement details page"]').click();
@@ -517,6 +570,14 @@ async function verifySaveAndReloadPersistence(page) {
 	await titleInputReload(frame, persistedTitle);
 	await waitForLocatorText(frame.locator('#dirty-chip'), 'Clean');
 	await waitForLocatorText(frame.locator('#sync-chip'), 'Synced');
+
+	// Reset the browser-hosted workbench after persistence assertions so the remaining
+	// repository-wide smoke starts from the complete mounted fixture and a fresh file index.
+	await page.reload({ waitUntil: 'domcontentloaded' });
+	await page.locator('.monaco-workbench').waitFor({ state: 'visible' });
+	await openRepositoryExplorer(page);
+	await waitForSidebarTree(page);
+	await pause(500);
 }
 
 async function verifyManagedMarkdownSurfaces(page) {
@@ -984,10 +1045,12 @@ async function seedCoverageEvidence(workspaceRoot) {
 		positive: 'required',
 		negative: 'optional',
 		edge: 'required',
-		fuzz: 'deferred'
+		fuzz: 'optional',
+		x_coverage_origin: 'smoke-fixture'
 	};
-	coveredRequirement.trace = undefined;
+	coveredRequirement.trace = { x_trace_origin: 'smoke-fixture' };
 	coveredRequirement.notes = undefined;
+	coveredRequirement.x_reviewed = true;
 
 	const partialRequirement = document.requirements[1];
 	partialRequirement.coverage = undefined;

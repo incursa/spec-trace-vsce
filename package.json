@@ -1,8 +1,8 @@
 {
   "name": "spec-trace-vsce",
   "displayName": "SpecTrace for VS Code",
-  "description": "Browse SpecTrace artifacts and edit specification requirements in a dense custom editor.",
-  "version": "1.0.14",
+  "description": "Browse local SpecTrace artifacts and edit requirements in a manager-inspired workspace.",
+  "version": "1.1.0",
   "publisher": "incursa",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {

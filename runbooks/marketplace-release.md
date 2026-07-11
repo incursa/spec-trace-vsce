@@ -11,14 +11,14 @@ npm run release:check
 npm run test:webview
 ```
 
-That command currently verifies:
+Together, these commands verify:
 
 - TypeScript compilation
 - ESLint
 - Production web bundle generation
-- Browser-based custom-editor, explorer, and quality-view smoke coverage
+- Browser-based custom-editor, explorer, and quality-view smoke coverage through `npm run test:webview`
 
-Note: the broader `npm test` suite and the custom editor smoke flow both use `vscode-test-web`, which depends on downloading a VS Code web test harness and can fail transiently due to upstream rate limits. The GitHub release gate intentionally avoids that external dependency and focuses on publishable output, so run the webview smoke locally before dispatching Publish.
+Note: the broader `npm test` suite and the custom editor smoke flow both use `vscode-test-web`, which depends on downloading a VS Code web test harness and can fail transiently due to upstream rate limits. `npm run release:check` intentionally avoids that external dependency and focuses on publishable output, so run the webview smoke locally before dispatching Publish.
 
 ## Required Manifest Metadata
 
