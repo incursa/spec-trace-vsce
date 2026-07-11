@@ -62,7 +62,7 @@ const vscode = acquireVsCodeApi();
 const appElement = document.getElementById('app');
 
 if (!appElement) {
-	throw new Error('Spec Trace editor root element is missing.');
+	throw new Error('SpecTrace editor root element is missing.');
 }
 
 const app = appElement as HTMLElement;
@@ -168,7 +168,7 @@ function applyHostState(message: SpecificationEditorSyncMessage): void {
 }
 
 function renderLoading(): void {
-	app.replaceChildren(createCard('Spec Trace editor', 'Loading structured editor...'));
+	app.replaceChildren(createCard('SpecTrace editor', 'Loading structured editor...'));
 }
 
 function shouldRenderRequirementDetail(): boolean {

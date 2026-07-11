@@ -872,7 +872,7 @@ function createDomainNode(categoryId: ArtifactCategoryId, domain: DomainSnapshot
 
 function createInitializeActionNode(categoryId: ArtifactCategoryId): SpecTraceTreeItem {
 	return new SpecTraceTreeItem(
-		'Initialize Spec Trace scaffold',
+		'Initialize SpecTrace scaffold',
 		vscode.TreeItemCollapsibleState.None,
 		{
 			kind: 'action',
@@ -882,7 +882,7 @@ function createInitializeActionNode(categoryId: ArtifactCategoryId): SpecTraceTr
 			}
 		},
 		'Create the initial folder structure and seed files for this workspace.',
-		'Initialize the Spec Trace scaffold before creating artifacts.',
+		'Initialize the SpecTrace scaffold before creating artifacts.',
 		new vscode.ThemeIcon('rocket')
 	);
 }

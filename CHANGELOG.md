@@ -1,10 +1,16 @@
 # Change Log
 
-All notable changes to the Spec Trace extension are documented in this file.
+All notable changes to the SpecTrace for VS Code extension are documented in this file.
 
 ## [Unreleased]
 
 - No unreleased changes yet.
+
+## [1.0.13]
+
+- Adopted the shared SpecTrace E3 identity for the Marketplace tile and activity bar.
+- Normalized public product naming to `SpecTrace` and `SpecTrace for VS Code`.
+- Added explicit brand-asset and trademark license boundaries.
 
 ## [1.0.12]
 
@@ -26,7 +32,7 @@ All notable changes to the Spec Trace extension are documented in this file.
 
 ## [1.0.6]
 
-- Added a Spec Trace repository explorer with category, domain, document, and requirement nodes.
+- Added a SpecTrace repository explorer with category, domain, document, and requirement nodes.
 - Added a custom editor for specification JSON files under `specs/requirements/**/*.json`.
 - Reworked the requirement experience into a browse-first dense index with a dedicated detail screen.
 - Added requirement search and coverage-state filters for large specifications.

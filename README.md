@@ -1,10 +1,12 @@
-# Spec Trace
+![SpecTrace](images/spectrace-readme-banner.png)
 
-Spec Trace is a VS Code web extension for working inside a repository that stores canonical Spec Trace artifacts.
+# SpecTrace for VS Code
+
+SpecTrace for VS Code is a web extension for working inside a repository that stores canonical SpecTrace artifacts.
 
 The current preview focuses on two high-value surfaces:
 
-- A repository explorer that groups Spec Trace artifacts by category and domain.
+- A repository explorer that groups SpecTrace artifacts by category and domain.
 - A dense custom editor for specification JSON files, optimized for scanning many requirements and opening one requirement into a focused editing screen.
 
 ## Current Preview
@@ -15,7 +17,7 @@ This extension is still in preview. The custom editor and repository explorer ar
 
 ### Repository explorer
 
-- Adds a dedicated `Spec Trace` activity bar container.
+- Adds a dedicated `SpecTrace` activity bar container.
 - Groups artifacts into:
   - Specifications
   - Architectural Views
@@ -51,7 +53,7 @@ This extension is still in preview. The custom editor and repository explorer ar
 
 ## Workspace Expectations
 
-The extension assumes a Spec Trace-style repository layout. The current explorer and custom editor are built around paths like:
+The extension assumes a SpecTrace-style repository layout. The current explorer and custom editor are built around paths like:
 
 ```text
 specs/
@@ -95,3 +97,7 @@ npm run run-in-browser
 ## Release Notes
 
 See [CHANGELOG.md](CHANGELOG.md).
+
+## License And Brand Assets
+
+The extension code and documentation are licensed under Apache-2.0. The SpecTrace name and the files listed in [`BRAND-ASSET-LICENSE.md`](BRAND-ASSET-LICENSE.md) are separate brand assets governed by that policy and [`TRADEMARKS.md`](TRADEMARKS.md); they are not licensed under Apache-2.0.

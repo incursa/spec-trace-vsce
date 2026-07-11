@@ -81,12 +81,12 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 	): Promise<SpecificationCustomDocument> {
 		const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
 		if (!workspaceFolder) {
-			throw new Error('Spec Trace specification files can only be opened from a workspace folder.');
+			throw new Error('SpecTrace specification files can only be opened from a workspace folder.');
 		}
 
 		const relativePath = vscode.workspace.asRelativePath(uri, false);
 		if (!isSpecificationPath(relativePath)) {
-			throw new Error('Spec Trace custom editor only supports files under specs/requirements/*.json.');
+			throw new Error('SpecTrace custom editor only supports files under specs/requirements/*.json.');
 		}
 
 		const { text, document } = await this.readDocumentSnapshot(uri, openContext);
@@ -194,7 +194,7 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 	): Promise<void> {
 		const destinationWorkspaceFolder = vscode.workspace.getWorkspaceFolder(destination);
 		if (!destinationWorkspaceFolder || destinationWorkspaceFolder.uri.toString() !== document.workspaceFolder.uri.toString()) {
-			throw new Error('Spec Trace files can only be saved inside the current workspace repository root.');
+			throw new Error('SpecTrace files can only be saved inside the current workspace repository root.');
 		}
 
 		await this.saveDocumentToUri(document, destination, cancellation);
@@ -374,7 +374,7 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 	<meta charset="UTF-8">
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Spec Trace Editor</title>
+	<title>SpecTrace Editor</title>
 	<link rel="stylesheet" href="${styleUri}">
 </head>
 <body>
@@ -391,7 +391,7 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 		<inc-state-panel class="loading-panel inc-state-panel inc-state-panel--info" variant="info">
 			<div class="inc-state-panel__head">
 				<span class="inc-state-panel__icon">Loading</span>
-				<h2 class="inc-state-panel__title">Spec Trace editor</h2>
+				<h2 class="inc-state-panel__title">SpecTrace editor</h2>
 			</div>
 			<p class="inc-state-panel__body">Loading structured editor...</p>
 			<div class="inc-state-panel__actions"></div>

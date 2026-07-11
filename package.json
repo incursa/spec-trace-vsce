@@ -1,8 +1,8 @@
 {
   "name": "spec-trace-vsce",
-  "displayName": "Spec Trace",
-  "description": "Browse Spec Trace artifacts and edit specification requirements in a dense custom editor.",
-  "version": "1.0.12",
+  "displayName": "SpecTrace for VS Code",
+  "description": "Browse SpecTrace artifacts and edit specification requirements in a dense custom editor.",
+  "version": "1.0.13",
   "publisher": "incursa",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {
@@ -12,7 +12,7 @@
   "pricing": "Free",
   "markdown": "github",
   "galleryBanner": {
-    "color": "#35357A",
+    "color": "#2B2E69",
     "theme": "dark"
   },
   "repository": {
@@ -42,50 +42,50 @@
     "commands": [
       {
         "command": "spec-trace-vsce.openSmokeFixture",
-        "title": "Spec Trace: Open Smoke Fixture",
-        "category": "Spec Trace"
+        "title": "SpecTrace: Open Smoke Fixture",
+        "category": "SpecTrace"
       },
       {
         "command": "spec-trace-vsce.initializeRepository",
-        "title": "Spec Trace: Initialize Repository",
-        "category": "Spec Trace"
+        "title": "SpecTrace: Initialize Repository",
+        "category": "SpecTrace"
       },
       {
         "command": "spec-trace-vsce.createArtifact",
-        "title": "Spec Trace: Create Artifact",
-        "category": "Spec Trace"
+        "title": "SpecTrace: Create Artifact",
+        "category": "SpecTrace"
       },
       {
         "command": "spec-trace-vsce.openRepositoryExplorer",
-        "title": "Spec Trace: Open Repository Explorer",
-        "category": "Spec Trace"
+        "title": "SpecTrace: Open Repository Explorer",
+        "category": "SpecTrace"
       },
       {
         "command": "spec-trace-vsce.refreshRepositoryExplorer",
-        "title": "Spec Trace: Refresh Repository Explorer",
-        "category": "Spec Trace"
+        "title": "SpecTrace: Refresh Repository Explorer",
+        "category": "SpecTrace"
       },
       {
         "command": "spec-trace-vsce.filterRepositoryExplorer",
-        "title": "Spec Trace: Filter Repository Explorer",
-        "category": "Spec Trace"
+        "title": "SpecTrace: Filter Repository Explorer",
+        "category": "SpecTrace"
       },
       {
         "command": "spec-trace-vsce.clearRepositoryExplorerFilter",
-        "title": "Spec Trace: Clear Repository Explorer Filter",
-        "category": "Spec Trace"
+        "title": "SpecTrace: Clear Repository Explorer Filter",
+        "category": "SpecTrace"
       },
       {
         "command": "spec-trace-vsce.openQualityView",
-        "title": "Spec Trace: Open Quality View",
-        "category": "Spec Trace"
+        "title": "SpecTrace: Open Quality View",
+        "category": "SpecTrace"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
           "id": "specTraceExplorer",
-          "title": "Spec Trace",
+          "title": "SpecTrace",
           "icon": "resources/spec-trace.svg"
         }
       ]
@@ -102,7 +102,7 @@
     "customEditors": [
       {
         "viewType": "spec-trace-vsce.specFileEditor",
-        "displayName": "Spec Trace Specification Editor",
+        "displayName": "SpecTrace Specification Editor",
         "selector": [
           {
             "filenamePattern": "**/specs/requirements/**/*.json"
@@ -112,7 +112,7 @@
       },
       {
         "viewType": "spec-trace-vsce.markdownArtifactEditor",
-        "displayName": "Spec Trace Managed Markdown Editor",
+        "displayName": "SpecTrace Managed Markdown Editor",
         "selector": [
           {
             "filenamePattern": "**/specs/architecture/**/*.md"

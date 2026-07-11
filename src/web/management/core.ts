@@ -304,7 +304,7 @@ function renderSpecificationArtifact(input: ArtifactCreationInput, domain: strin
 		owner,
 		purpose: `Define ${title}.`,
 		scope: `This specification covers ${title.toLowerCase()}.`,
-		context: 'Created with the Spec Trace VS Code extension.',
+		context: 'Created with the SpecTrace VS Code extension.',
 		tags: ['spec-trace', domain],
 		related_artifacts: [],
 		open_questions: [],
@@ -339,7 +339,7 @@ function renderMarkdownArtifact(
 ): RenderedArtifact {
 	const prefix = getArtifactPrefix(kind);
 	const artifactId = `${prefix}-${toUpperTokenSequence(title, fallbackTitleForKind(kind).toUpperCase())}`;
-	const summary = (input.summary?.trim() || `Created from the Spec Trace VS Code extension for ${title}.`).trim();
+	const summary = (input.summary?.trim() || `Created from the SpecTrace VS Code extension for ${title}.`).trim();
 	const owner = input.owner?.trim() || `${domain}-maintainers`;
 	const artifactType = getManagedMarkdownArtifactType(kind);
 	const content = createManagedMarkdownTemplate({
@@ -438,9 +438,9 @@ function renderBootstrapStarterSpecification(): string {
 		capability: 'getting-started',
 		status: 'draft',
 		owner: 'getting-started-maintainers',
-		purpose: 'Define the initial starter specification created during Spec Trace bootstrap.',
-		scope: 'This specification covers the initial bootstrap path for a newly initialized Spec Trace repository.',
-		context: 'Created automatically by the Spec Trace VS Code extension during repository bootstrap.',
+		purpose: 'Define the initial starter specification created during SpecTrace bootstrap.',
+		scope: 'This specification covers the initial bootstrap path for a newly initialized SpecTrace repository.',
+		context: 'Created automatically by the SpecTrace VS Code extension during repository bootstrap.',
 		tags: ['spec-trace', 'getting-started', 'bootstrap'],
 		related_artifacts: [],
 		open_questions: [],

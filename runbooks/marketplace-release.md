@@ -1,6 +1,6 @@
 # Marketplace Release Runbook
 
-This runbook covers the remaining steps to publish the extension to the Visual Studio Code Marketplace.
+This runbook covers packaging and publishing updates to the existing Visual Studio Code Marketplace extension.
 
 ## Preflight
 
@@ -31,7 +31,7 @@ The following manifest data must be finalized before a real Marketplace publish:
 Current values are now wired in:
 
 - `publisher`: `incursa`
-- `license`: `Apache-2.0`
+- `license`: `SEE LICENSE IN LICENSE`
 - `repository`: `https://github.com/incursa/spec-trace-vsce`
 - `homepage`: `https://github.com/incursa/spec-trace-vsce`
 - `bugs`: `https://github.com/incursa/spec-trace-vsce/issues`
@@ -41,6 +41,8 @@ Current values are now wired in:
 The repository now includes marketplace-facing images:
 
 - `images/icon.png`
+- `images/spectrace-readme-banner.png`
+- `images/spectrace-wordmark-vscode.svg`
 - `images/requirements-index.png`
 - `images/requirements-filtered.png`
 - `images/requirement-detail.png`
@@ -48,6 +50,7 @@ The repository now includes marketplace-facing images:
 Before publishing, verify that:
 
 - The icon is the intended brand asset.
+- The files listed in `BRAND-ASSET-LICENSE.md` and `TRADEMARKS.md` are included in the VSIX and remain outside Apache-2.0.
 - The screenshots still match the shipped UI.
 - The README does not reference stale paths or old UI states.
 
@@ -70,15 +73,23 @@ If repository metadata is still not set in `package.json`, `vsce` will not be ab
 
 ## Publish
 
-With a Marketplace publisher and PAT configured:
+The normal release path is the repository's manually triggered **Publish** GitHub Actions workflow (`.github/workflows/publish.yml`). It installs the locked dependencies, runs the release gate, and then publishes the version declared in `package.json` using the `VSCE_PAT` secret from the `marketplace` environment.
+
+To publish from GitHub:
+
+1. Push the release commit to the branch you intend to publish.
+2. Open **Actions** in GitHub and select **Publish**.
+3. Choose **Run workflow**, select the release branch, and confirm the run.
+4. Verify that the release gate and Marketplace publish steps both pass.
+
+For a deliberate local publish instead, use:
 
 ```bash
 npx @vscode/vsce publish
 ```
 
-If this becomes part of CI, prefer a non-interactive release workflow with a stored Marketplace token.
+## Release Requirements
 
-## Current Blocking Items
-
-- A Marketplace PAT is still required for the actual `vsce publish` step.
-- No automated publish workflow exists yet.
+- The `marketplace` GitHub environment must contain a valid `VSCE_PAT` secret for the `incursa` publisher.
+- The version in `package.json` must not already exist in the Marketplace.
+- Publishing is an explicit release action; packaging and local verification do not publish automatically.

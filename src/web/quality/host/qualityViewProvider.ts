@@ -87,7 +87,7 @@ export class QualityViewProvider implements vscode.Disposable {
 
 		const panel = vscode.window.createWebviewPanel(
 			'spec-trace-vsce.qualityView',
-			'Spec Trace Quality',
+			'SpecTrace Quality',
 			vscode.ViewColumn.Beside,
 			{
 				enableScripts: true,
@@ -322,7 +322,7 @@ export class QualityViewProvider implements vscode.Disposable {
 	<meta charset="UTF-8">
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Spec Trace Quality</title>
+	<title>SpecTrace Quality</title>
 	<style>
 		:root {
 			color-scheme: light dark;
@@ -555,7 +555,7 @@ export class QualityViewProvider implements vscode.Disposable {
 		<section class="card hero">
 			<div class="hero__header">
 				<div class="hero__title">
-					<h1>Spec Trace Quality</h1>
+					<h1>SpecTrace Quality</h1>
 					<div class="muted">Read-only view over workspace-local quality and attestation artifacts.</div>
 				</div>
 				<div class="toolbar">

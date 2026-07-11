@@ -92,7 +92,7 @@ function createHeroCard(selected: QualityArtifactSnapshot | undefined): HTMLElem
 	const title = document.createElement('div');
 	title.className = 'hero__title';
 	const heading = document.createElement('h1');
-	heading.textContent = 'Spec Trace Quality';
+	heading.textContent = 'SpecTrace Quality';
 	const subtitle = document.createElement('div');
 	subtitle.className = 'muted';
 	subtitle.textContent = snapshot.message;
@@ -218,7 +218,7 @@ function createReferenceCard(selected: QualityArtifactSnapshot | undefined): HTM
 	heading.textContent = 'Local references';
 	const subtitle = document.createElement('div');
 	subtitle.className = 'muted';
-	subtitle.textContent = 'Open local Spec Trace targets referenced by the selected quality artifact.';
+	subtitle.textContent = 'Open local SpecTrace targets referenced by the selected quality artifact.';
 	card.append(heading, subtitle);
 
 	if (!selected || selected.references.length === 0) {

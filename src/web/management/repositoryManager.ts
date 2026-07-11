@@ -63,14 +63,14 @@ export class RepositoryManager {
 
 	public async initializeRepository(workspaceFolder = this.getWorkspaceFolder()): Promise<BootstrapPlan | undefined> {
 		if (!workspaceFolder) {
-			void this.windowApi.showErrorMessage('Open a workspace folder before initializing Spec Trace.');
+			void this.windowApi.showErrorMessage('Open a workspace folder before initializing SpecTrace.');
 			return undefined;
 		}
 
 		const existingPaths = await this.collectExistingScaffoldPaths(workspaceFolder);
 		const plan = createBootstrapPlan(existingPaths);
 		if (plan.missingDirectories.length === 0 && plan.missingFiles.length === 0) {
-			void this.windowApi.showInformationMessage('Spec Trace scaffold is already present in this workspace.');
+			void this.windowApi.showInformationMessage('SpecTrace scaffold is already present in this workspace.');
 			return plan;
 		}
 
@@ -100,7 +100,7 @@ export class RepositoryManager {
 		const starterSpecificationPath = this.findStarterSpecificationPath(plan);
 
 		const selection = await this.windowApi.showInformationMessage(
-			'Spec Trace scaffold initialized.',
+			'SpecTrace scaffold initialized.',
 			...(starterSpecificationPath ? ['Open starter spec'] : []),
 			'Create artifact',
 			'Open Explorer'
@@ -129,14 +129,14 @@ export class RepositoryManager {
 
 	public async promptAndCreateArtifact(options?: CreateArtifactCommandOptions, workspaceFolder = this.getWorkspaceFolder()): Promise<void> {
 		if (!workspaceFolder) {
-			void this.windowApi.showErrorMessage('Open a workspace folder before creating Spec Trace artifacts.');
+			void this.windowApi.showErrorMessage('Open a workspace folder before creating SpecTrace artifacts.');
 			return;
 		}
 
 		const initialState = await this.detectRepositoryState(workspaceFolder);
 		if (initialState === 'missing') {
 			const selection = await this.windowApi.showInformationMessage(
-				'Spec Trace scaffold is missing. Initialize the repository before creating artifacts.',
+				'SpecTrace scaffold is missing. Initialize the repository before creating artifacts.',
 				'Initialize repository',
 				'Cancel'
 			);
@@ -198,7 +198,7 @@ export class RepositoryManager {
 
 		const created = await this.writeRenderedArtifact(workspaceFolder, rendered);
 		if (!created) {
-			void this.windowApi.showErrorMessage(`A Spec Trace artifact already exists at ${rendered.relativePath}. Choose a different title or domain.`);
+			void this.windowApi.showErrorMessage(`A SpecTrace artifact already exists at ${rendered.relativePath}. Choose a different title or domain.`);
 			return;
 		}
 
@@ -231,7 +231,7 @@ export class RepositoryManager {
 				{ label: 'Verification', value: 'verification' as const, description: 'Create a verification markdown artifact.' }
 			],
 			{
-				title: 'Create Spec Trace artifact',
+				title: 'Create SpecTrace artifact',
 				ignoreFocusOut: true
 			}
 		);

@@ -99,7 +99,7 @@ export class MarkdownArtifactCustomEditorProvider implements vscode.CustomEditor
 	): Promise<ManagedMarkdownCustomDocument> {
 		const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
 		if (!workspaceFolder) {
-			throw new Error('Spec Trace markdown files can only be opened from a workspace folder.');
+			throw new Error('SpecTrace markdown files can only be opened from a workspace folder.');
 		}
 
 		const relativePath = vscode.workspace.asRelativePath(uri, false);
@@ -201,7 +201,7 @@ export class MarkdownArtifactCustomEditorProvider implements vscode.CustomEditor
 	): Promise<void> {
 		const destinationWorkspaceFolder = vscode.workspace.getWorkspaceFolder(destination);
 		if (!destinationWorkspaceFolder || destinationWorkspaceFolder.uri.toString() !== document.workspaceFolder.uri.toString()) {
-			throw new Error('Spec Trace markdown files can only be saved inside the current workspace repository root.');
+			throw new Error('SpecTrace markdown files can only be saved inside the current workspace repository root.');
 		}
 
 		await this.saveDocumentToUri(document, destination, cancellation);
@@ -530,7 +530,7 @@ export class MarkdownArtifactCustomEditorProvider implements vscode.CustomEditor
 	<meta charset="UTF-8">
 	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Spec Trace Managed Markdown Editor</title>
+	<title>SpecTrace Managed Markdown Editor</title>
 	<style>
 		:root {
 			color-scheme: light dark;

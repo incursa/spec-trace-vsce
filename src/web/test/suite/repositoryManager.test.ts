@@ -127,7 +127,7 @@ suite('Repository manager', () => {
 		assert.strictEqual(fileSystem.exists(domainIndexUri), false);
 		assert.strictEqual(commands.calls.length, 0);
 		assert.deepStrictEqual(window.errorMessages, [
-			`A Spec Trace artifact already exists at ${rendered.relativePath}. Choose a different title or domain.`
+			`A SpecTrace artifact already exists at ${rendered.relativePath}. Choose a different title or domain.`
 		]);
 	});
 });
