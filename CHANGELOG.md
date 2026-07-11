@@ -6,6 +6,10 @@ All notable changes to the SpecTrace for VS Code extension are documented in thi
 
 - No unreleased changes yet.
 
+## [1.0.14]
+
+- Corrected Marketplace release guidance and aligned browser-smoke fixtures with the `SpecTrace` product name.
+
 ## [1.0.13]
 
 - Adopted the shared SpecTrace E3 identity for the Marketplace tile and activity bar.

@@ -11,7 +11,7 @@ The current preview focuses on two high-value surfaces:
 
 ## Current Preview
 
-This extension is still in preview. The custom editor and repository explorer are working, but the marketplace metadata and publication pipeline are still being finalized.
+This extension is still in preview while its editing and repository-management surfaces continue to mature.
 
 ## Features
 
@@ -89,9 +89,8 @@ Run the extension in a browser-hosted development session:
 npm run run-in-browser
 ```
 
-## Known Gaps Before Marketplace Release
+## Preview Status
 
-- The release packaging and publish flow still need a Marketplace PAT and the final publish step.
 - The extension is still marked as preview while the surface matures.
 
 ## Release Notes

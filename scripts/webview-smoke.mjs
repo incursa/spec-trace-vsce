@@ -490,7 +490,7 @@ async function verifySaveAndReloadPersistence(page) {
 	const titleInput = frame.locator('#title-input');
 	await titleInput.waitFor({ state: 'visible' });
 	const originalTitle = await titleInput.inputValue();
-	const persistedTitle = `${originalTitle || 'Spec Trace'} [playwright smoke]`;
+	const persistedTitle = `${originalTitle || 'SpecTrace'} [playwright smoke]`;
 
 	await titleInput.fill(persistedTitle);
 	await waitForLocatorText(frame.locator('#dirty-chip'), 'Dirty');
@@ -630,7 +630,7 @@ async function verifyQualityView(page) {
 	const frame = await findQualityViewFrame(page);
 
 	await frame.locator('#artifact-select').waitFor({ state: 'visible', timeout: 10_000 });
-	await waitForLocatorText(frame.locator('h1'), 'Spec Trace Quality');
+	await waitForLocatorText(frame.locator('h1'), 'SpecTrace Quality');
 	await waitForLocatorTextContains(frame.locator('#summary-card'), qualitySmokeState.reportTitle);
 	await waitForLocatorTextContains(frame.locator('#summary-card'), qualitySmokeState.reportRelativePath);
 
@@ -931,7 +931,7 @@ async function createSmokeWorkspace() {
 			title: 'Add repository tree view',
 			owner: 'wb-maintainers',
 			status: 'planned',
-			summary: 'Implement the repository explorer surface for local Spec Trace artifacts.',
+			summary: 'Implement the repository explorer surface for local SpecTrace artifacts.',
 			relatedArtifacts: ['REQ-VSCE-DOC-EDITOR-0006', 'ARC-WB-0001'],
 			traceReferences: ['REQ-VSCE-DOC-EDITOR-0006', 'REQ-VSCE-DOC-EDITOR-0018'],
 			additionalLists: {
@@ -939,7 +939,7 @@ async function createSmokeWorkspace() {
 				verification_links: ['VER-WB-0001']
 			},
 			sections: {
-				summary: 'Implement the repository explorer surface for local Spec Trace artifacts.',
+				summary: 'Implement the repository explorer surface for local SpecTrace artifacts.',
 				planned_changes: 'Add category-grouped browsing, local filtering, and managed markdown navigation.',
 				verification_plan: 'Verify the explorer can open the managed markdown editors and navigate local references.'
 			}

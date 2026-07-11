@@ -8,6 +8,7 @@ Run the local release gate:
 
 ```bash
 npm run release:check
+npm run test:webview
 ```
 
 That command currently verifies:
@@ -15,8 +16,9 @@ That command currently verifies:
 - TypeScript compilation
 - ESLint
 - Production web bundle generation
+- Browser-based custom-editor, explorer, and quality-view smoke coverage
 
-Note: the broader `npm test` suite and the custom editor smoke flow both use `vscode-test-web`, which depends on downloading a VS Code web test harness and can fail transiently due to upstream rate limits. The release gate intentionally avoids that external dependency and focuses on publishable output.
+Note: the broader `npm test` suite and the custom editor smoke flow both use `vscode-test-web`, which depends on downloading a VS Code web test harness and can fail transiently due to upstream rate limits. The GitHub release gate intentionally avoids that external dependency and focuses on publishable output, so run the webview smoke locally before dispatching Publish.
 
 ## Required Manifest Metadata
 
@@ -73,7 +75,7 @@ If repository metadata is still not set in `package.json`, `vsce` will not be ab
 
 ## Publish
 
-The normal release path is the repository's manually triggered **Publish** GitHub Actions workflow (`.github/workflows/publish.yml`). It installs the locked dependencies, runs the release gate, and then publishes the version declared in `package.json` using the `VSCE_PAT` secret from the `marketplace` environment.
+The normal release path is the repository's manually triggered **Publish** GitHub Actions workflow (`.github/workflows/publish.yml`). It installs the locked dependencies, runs the release gate, and then publishes the version declared in `package.json` using the repository-level `VSCE_PAT` secret. The job is associated with the `marketplace` environment.
 
 To publish from GitHub:
 
@@ -90,6 +92,6 @@ npx @vscode/vsce publish
 
 ## Release Requirements
 
-- The `marketplace` GitHub environment must contain a valid `VSCE_PAT` secret for the `incursa` publisher.
+- The repository must contain a valid `VSCE_PAT` Actions secret for the `incursa` publisher.
 - The version in `package.json` must not already exist in the Marketplace.
 - Publishing is an explicit release action; packaging and local verification do not publish automatically.
