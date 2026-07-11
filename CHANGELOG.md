@@ -6,6 +6,10 @@ All notable changes to the SpecTrace for VS Code extension are documented in thi
 
 - No unreleased changes yet.
 
+## [1.1.1] - 2026-07-11
+
+- Replaced the activity-bar icon with a cleaner 24-pixel SpecTrace junction mark for better sidebar legibility.
+
 ## [1.1.0] - 2026-07-10
 
 - Reworked the local requirements workspace into a manager-inspired register with persistent inspection, Overview and Reading views, and responsive narrow-pane behavior.
