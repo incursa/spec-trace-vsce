@@ -1,12 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
   <title id="title">SpecTrace mark — VS Code activity bar</title>
-  <desc id="desc">An open specification bracket meets a compact junction, continues as a trace, and ends at an evidence point.</desc>
-  <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
-    <path d="M9.5 3.5H5.5V8"/>
-    <path d="M5.5 16V20.5H9.5"/>
-    <path d="M8.3 12H17.25"/>
-    <circle cx="19.5" cy="12" r="2.25"/>
+  <desc id="desc">A bracket-like clause form meets a diamond junction, continues as a trace, and ends in an evidence tile.</desc>
+  <g transform="translate(0 0) scale(1)">
+    <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M31 12H17V19M17 45V52H31" stroke-width="8"/>
+      <path d="M17 19L30 32L17 45L4 32Z" stroke-width="7"/>
+      <path d="M29 32H50" stroke-width="8"/>
+    </g>
+    <rect x="49" y="25.5" width="13" height="13" rx="3" fill="currentColor"/>
+    <circle cx="17" cy="32" r="3.5" fill="currentColor"/>
   </g>
-  <path d="M5.5 9.2L8.3 12L5.5 14.8L2.7 12Z" fill="currentColor"/>
-  <circle cx="19.5" cy="12" r="0.75" fill="currentColor"/>
 </svg>

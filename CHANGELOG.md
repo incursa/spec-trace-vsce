@@ -6,6 +6,10 @@ All notable changes to the SpecTrace for VS Code extension are documented in thi
 
 - No unreleased changes yet.
 
+## [1.1.2] - 2026-07-11
+
+- Restored the approved, production-exported SpecTrace activity-bar asset from the brand package.
+
 ## [1.1.1] - 2026-07-11
 
 - Replaced the activity-bar icon with a cleaner 24-pixel SpecTrace junction mark for better sidebar legibility.
