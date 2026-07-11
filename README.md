@@ -7,7 +7,7 @@ SpecTrace for VS Code is a web extension for working inside a repository that st
 The current preview focuses on two high-value surfaces:
 
 - A repository explorer that groups SpecTrace artifacts by category and domain.
-- A dense custom editor for specification JSON files, optimized for scanning many requirements and opening one requirement into a focused editing screen.
+- A local-only custom editor for specification JSON files, with a manager-inspired requirement register, persistent inspector, and focused typed editing.
 
 ## Current Preview
 
@@ -27,15 +27,21 @@ This extension is still in preview while its editing and repository-management s
 - Opens specification JSON files in the custom editor.
 - Reveals a specific requirement directly from the tree.
 
-### Dense specification editor
+### Local requirements workspace
 
 - Opens `specs/requirements/**/*.json` files in a custom editor.
 - Uses the shared `@incursa/ui-kit` surface rather than ad hoc HTML.
-- Starts in a browse-first requirement index instead of a noisy card grid.
+- Starts in a browse-first requirement register with a persistent selected-requirement inspector.
+- Provides Overview and Reading views without adding view state to canonical JSON.
 - Supports search plus `All`, `Issues`, `Missing`, `Partial`, and `Covered` filters.
-- Opens a requirement into a focused detail screen for editing.
+- Provides typed canonical coverage controls and repeatable trace-reference editors.
+- Preserves requirement, coverage, trace, and `x_...` extension fields during local round trips.
+- Opens a requirement into a focused editing screen while keeping the standard JSON editor available.
 - Supports previous and next requirement navigation while staying in the detail screen.
+- Places document details before the long requirements surface.
+- Stacks the inspector at narrow editor widths without horizontal page scrolling.
 - Persists browse and edit state in the webview during reloads.
+- Continues to use VS Code save, dirty, undo/redo, revert, backup, validation, and external-conflict behavior.
 
 ## Screenshots
 

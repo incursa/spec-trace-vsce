@@ -658,6 +658,43 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 			gap: 0.75rem;
 		}
 
+		.requirement-register-view-switch {
+			display: flex;
+			flex-wrap: wrap;
+			align-items: center;
+			justify-content: space-between;
+			gap: 0.5rem 1rem;
+		}
+
+		.requirement-register-view-description {
+			margin: 0;
+		}
+
+		.requirement-register-layout {
+			display: grid;
+			grid-template-columns: minmax(30rem, 1.4fr) minmax(22rem, 0.8fr);
+			gap: 1rem;
+			align-items: start;
+			min-width: 0;
+		}
+
+		.requirement-register,
+		.requirement-register-inspector {
+			min-width: 0;
+		}
+
+		.requirement-register-inspector {
+			position: sticky;
+			top: 1rem;
+			max-height: calc(100vh - 2rem);
+			overflow: auto;
+			scrollbar-gutter: stable;
+		}
+
+		.requirement-register--reading .requirement-index-meta {
+			display: none;
+		}
+
 		.requirement-index-toolbar {
 			display: grid;
 			grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -798,19 +835,19 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 			color: inherit;
 			text-align: left;
 			font: inherit;
-			cursor: pointer;
+			cursor: default;
 			appearance: none;
 		}
 
 		.requirement-index-row.active {
-			background: color-mix(in srgb, var(--vscode-list-activeSelectionBackground, #cce6ff) 24%, transparent);
-			color: var(--vscode-foreground);
-			box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vscode-focusBorder, #3794ff) 55%, transparent);
+			background: var(--vscode-list-activeSelectionBackground, #cce6ff);
+			color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
+			box-shadow: inset 3px 0 0 var(--vscode-focusBorder, #3794ff), inset 0 0 0 1px var(--vscode-contrastActiveBorder, transparent);
 		}
 
 		.requirement-index-row.active .requirement-summary-statement,
 		.requirement-index-row.active .requirement-index-evidence {
-			color: color-mix(in srgb, var(--vscode-foreground) 68%, var(--vscode-descriptionForeground) 32%);
+			color: var(--vscode-list-activeSelectionForeground, var(--vscode-foreground));
 		}
 
 		.requirement-index-row:focus-visible {
@@ -861,6 +898,12 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 			font: inherit;
 			cursor: pointer;
 			appearance: none;
+		}
+
+		.requirement-index-open:focus-visible {
+			outline: 2px solid var(--vscode-focusBorder);
+			outline-offset: 2px;
+			border-radius: 0.25rem;
 		}
 
 		.requirement-index-open-button {
@@ -995,10 +1038,30 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 			gap: 0.75rem 1rem;
 		}
 
+		.requirement-typed-editor,
+		.requirement-trace-editor {
+			min-width: 0;
+		}
+
+		.requirement-trace-editor {
+			display: grid;
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			gap: 0.75rem 1rem;
+		}
+
 		.requirement-detail-overview,
 		.requirement-detail-body .wide,
 		.requirement-readonly-field.wide {
 			grid-column: 1 / -1;
+		}
+
+		.requirement-detail-body--inspector {
+			grid-template-columns: 1fr;
+		}
+
+		.requirement-detail-body--inspector .requirement-detail-overview,
+		.requirement-detail-body--inspector .wide {
+			grid-column: auto;
 		}
 
 		.requirement-readonly-field {
@@ -1022,9 +1085,21 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 			outline-offset: -1px;
 		}
 
-		@media (max-width: 900px) {
+		@media (max-width: 960px) {
+			.requirement-register-layout {
+				grid-template-columns: 1fr;
+			}
+
+			.requirement-register-inspector {
+				position: static;
+				max-height: none;
+				overflow: visible;
+				grid-row: 1;
+			}
+
 			.form-grid,
-			.requirement-detail-body {
+			.requirement-detail-body,
+			.requirement-trace-editor {
 				grid-template-columns: 1fr;
 			}
 
@@ -1078,6 +1153,26 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 				flex-direction: column;
 			}
 		}
+
+		@media (max-width: 640px) {
+			#app {
+				padding: 12px;
+			}
+
+			.requirement-register-view-switch,
+			.requirement-register-view-buttons,
+			.requirement-index-filter-group,
+			.hero-actions,
+			.card-header-actions,
+			.section-actions,
+			.requirement-toolbar {
+				width: 100%;
+			}
+
+			.requirement-index-header {
+				grid-template-columns: auto minmax(0, 1fr);
+			}
+		}
 	</style>
 	<script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
@@ -1096,7 +1191,7 @@ export class SpecificationCustomEditorProvider implements vscode.CustomEditorPro
 	}
 }
 
-class SpecificationCustomDocument implements vscode.CustomDocument {
+export class SpecificationCustomDocument implements vscode.CustomDocument {
 	public readonly uri: vscode.Uri;
 
 	public readonly workspaceFolder: vscode.WorkspaceFolder;
@@ -1126,7 +1221,8 @@ class SpecificationCustomDocument implements vscode.CustomDocument {
 		uri: vscode.Uri,
 		initialDiskText: string,
 		initialDocument: SpecificationDocument,
-		provider: SpecificationCustomEditorProvider
+		provider: SpecificationCustomEditorProvider,
+		watchExternalChanges = true
 	) {
 		this.workspaceFolder = workspaceFolder;
 		this.uri = uri;
@@ -1135,7 +1231,7 @@ class SpecificationCustomDocument implements vscode.CustomDocument {
 		this._historyIndex = 0;
 		this._savedHistoryIndex = 0;
 		this._lastDiskText = initialDiskText;
-		this._watcher = this.createWatcher();
+		this._watcher = watchExternalChanges ? this.createWatcher() : undefined;
 	}
 
 	public get state(): SpecificationDocument {

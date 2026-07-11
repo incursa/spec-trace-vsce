@@ -130,6 +130,34 @@
       "id": "REQ-VSCE-EDITOR-0020",
       "title": "Support coverage drill-down",
       "statement": "The editor MUST let the user drill into a requirement from the coverage summary and reveal that requirement's canonical `coverage`, `trace`, and `notes` details using controls that preserve the standard structured data shape."
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0021",
+      "title": "Present a persistent requirement register",
+      "statement": "The editor MUST present requirements in a browse-first register with a persistent selected-requirement inspector when editor width permits, while preserving the selected source requirement across search, coverage filters, sorting, view changes, and rerenders."
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0022",
+      "title": "Provide overview and reading views",
+      "statement": "The requirement register MUST provide an Overview view for locally derived coverage, trace, notes, and validation summaries and a Reading view that emphasizes the full normative statement without persisting either view choice into canonical JSON."
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0023",
+      "title": "Edit canonical coverage and trace",
+      "statement": "The editor MUST provide typed controls for the canonical `coverage` dimensions and repeatable controls for the canonical `trace` lists while preserving untouched requirement, coverage, trace, and `x_...` extension fields."
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0024",
+      "title": "Adapt the register to editor width",
+      "statement": "The requirement register MUST keep search, view controls, requirement selection, inspection, editing actions, validation recovery, and document details reachable at wide, narrow, and zoomed editor widths without requiring horizontal page scrolling."
+    },
+    {
+      "id": "REQ-VSCE-EDITOR-0025",
+      "title": "Keep local and service state distinct",
+      "statement": "The editor MUST derive its requirement register exclusively from the open local canonical specification without synthesizing or persisting manager-only authentication, sharing, import, operational state, audit history, record version, comparison, or service DTO fields.",
+      "notes": [
+        "A specialized register view such as Column Contracts is eligible only when an explicit typed local canonical shape is defined; arbitrary extension data is not sufficient."
+      ]
     }
   ]
 }

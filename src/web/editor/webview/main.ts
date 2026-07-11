@@ -47,7 +47,9 @@ interface SpecificationEditorWebviewState {
 	lastCommittedSerialized?: string;
 	expandedCardPaths?: string[];
 	coverageRequirementSelectionKey?: string;
+	coverageRequirementSelectionIndexHint?: number;
 	requirementsViewMode?: RequirementViewMode;
+	requirementRegisterView?: RequirementRegisterView;
 	requirementSearchQuery?: string;
 	requirementIndexFilter?: RequirementIndexFilter;
 	requirementSortKey?: RequirementSortKey;
@@ -76,7 +78,9 @@ let expandedCardPaths = new Set<string>();
 let pendingRevealCardPaths = new Set<string>();
 let pendingOpenRequirementIndex: number | undefined;
 let coverageRequirementSelectionKey = '';
+let coverageRequirementSelectionIndexHint = -1;
 let currentRequirementViewMode: RequirementViewMode = 'index';
+let requirementRegisterView: RequirementRegisterView = 'overview';
 let requirementSearchQuery = '';
 let requirementIndexFilter: RequirementIndexFilter = 'all';
 let requirementSortKey: RequirementSortKey = 'file';
@@ -87,10 +91,22 @@ let expandedRequirementRowPaths = new Set<string>();
 const statusOptions = ['draft', 'review', 'approved', 'active', 'deprecated', 'archived'];
 type TopLevelListField = 'tags' | 'related_artifacts' | 'open_questions';
 type RequirementViewMode = 'index' | 'view' | 'edit';
+type RequirementRegisterView = 'overview' | 'reading';
 type RequirementIndexFilter = 'all' | 'issues' | 'missing' | 'partial' | 'covered';
 type RequirementSortKey = 'file' | 'id' | 'title';
 type RequirementSortDirection = 'asc' | 'desc';
+type CoverageDimension = 'positive' | 'negative' | 'edge' | 'fuzz';
+type RequirementTraceField = 'satisfied_by' | 'implemented_by' | 'verified_by' | 'derived_from' | 'supersedes' | 'upstream_refs' | 'related';
 const requirementIndexFilters: RequirementIndexFilter[] = ['all', 'issues', 'missing', 'partial', 'covered'];
+const requirementTraceFields: Array<{ field: RequirementTraceField; label: string; placeholder: string }> = [
+	{ field: 'satisfied_by', label: 'Satisfied by', placeholder: 'ARC-EXAMPLE-0001' },
+	{ field: 'implemented_by', label: 'Implemented by', placeholder: 'WI-EXAMPLE-0001' },
+	{ field: 'verified_by', label: 'Verified by', placeholder: 'VER-EXAMPLE-0001' },
+	{ field: 'derived_from', label: 'Derived from', placeholder: 'REQ-EXAMPLE-0001' },
+	{ field: 'supersedes', label: 'Supersedes', placeholder: 'REQ-EXAMPLE-0001' },
+	{ field: 'upstream_refs', label: 'Upstream references', placeholder: 'RFC-9000#section-1' },
+	{ field: 'related', label: 'Related', placeholder: 'REQ-EXAMPLE-0001' }
+];
 
 interface CoverageSelection {
 	key: string;
@@ -135,7 +151,9 @@ if (persistedState?.document) {
 	lastCommittedSerialized = persistedState.lastCommittedSerialized ?? serializeSpecificationDocument(currentDocument);
 	expandedCardPaths = new Set(persistedState.expandedCardPaths ?? []);
 	coverageRequirementSelectionKey = persistedState.coverageRequirementSelectionKey ?? '';
+	coverageRequirementSelectionIndexHint = persistedState.coverageRequirementSelectionIndexHint ?? -1;
 	currentRequirementViewMode = persistedState.requirementsViewMode ?? 'index';
+	requirementRegisterView = persistedState.requirementRegisterView ?? 'overview';
 	requirementSearchQuery = persistedState.requirementSearchQuery ?? '';
 	requirementIndexFilter = persistedState.requirementIndexFilter ?? 'all';
 	requirementSortKey = persistedState.requirementSortKey ?? 'file';
@@ -152,11 +170,22 @@ if (persistedState?.document) {
 
 function applyHostState(message: SpecificationEditorSyncMessage): void {
 	syncExpandedCardPathsFromDom();
-	currentDocument = normalizeEditableDocument(cloneSpecificationDocument(message.document));
+	const incomingDocument = normalizeEditableDocument(cloneSpecificationDocument(message.document));
+	const incomingSerialized = serializeSpecificationDocument(incomingDocument);
+	const canRefreshInPlace = currentDocument !== undefined && incomingSerialized === lastCommittedSerialized;
 	currentIssues = message.issues;
 	currentDirty = message.isDirty;
 	currentExternalConflict = message.externalConflict;
-	lastCommittedSerialized = serializeSpecificationDocument(currentDocument);
+	lastCommittedSerialized = incomingSerialized;
+	if (canRefreshInPlace) {
+		persistWebviewState();
+		refreshChrome();
+		renderValidationState();
+		flushPendingRevealCards();
+		return;
+	}
+
+	currentDocument = incomingDocument;
 	ensureCoverageSelectionKey();
 	ensureRequirementViewMode();
 	ensureRequirementIndexState();
@@ -165,6 +194,7 @@ function applyHostState(message: SpecificationEditorSyncMessage): void {
 	persistWebviewState();
 	refreshChrome();
 	renderValidationState();
+	flushPendingRevealCards();
 }
 
 function renderLoading(): void {
@@ -195,6 +225,9 @@ function ensureRequirementViewMode(): void {
 }
 
 function ensureRequirementIndexState(): void {
+	if (!['overview', 'reading'].includes(requirementRegisterView)) {
+		requirementRegisterView = 'overview';
+	}
 	if (!requirementIndexFilters.includes(requirementIndexFilter)) {
 		requirementIndexFilter = 'all';
 	}
@@ -216,12 +249,17 @@ function ensureRequirementIndexState(): void {
 	}
 }
 
+function setRequirementRegisterView(view: RequirementRegisterView): void {
+	requirementRegisterView = view;
+	persistWebviewState();
+}
+
 function addRequirementAndOpenEditor(): void {
 	ensureEditableDocument();
 	currentDocument!.requirements = currentDocument!.requirements ?? [];
 	pendingOpenRequirementIndex = currentDocument!.requirements.length;
 	currentDocument!.requirements.push(createEmptyRequirement());
-	setCoverageRequirementSelectionKey(`index:${pendingOpenRequirementIndex}`);
+	setCoverageRequirementSelectionKey(`index:${pendingOpenRequirementIndex}`, pendingOpenRequirementIndex);
 	currentRequirementViewMode = 'edit';
 	commitCurrentDocument(true);
 	renderEditor();
@@ -239,7 +277,7 @@ function openRequirementByIndex(index: number, mode: Exclude<RequirementViewMode
 		return;
 	}
 
-	setCoverageRequirementSelectionKey(coverageSelectionKeyForRequirement(requirement, index));
+	setCoverageRequirementSelectionKey(coverageSelectionKeyForRequirement(requirement, index), index);
 	currentRequirementViewMode = mode;
 	persistWebviewState();
 }
@@ -324,7 +362,12 @@ function navigateRequirementByOffset(offset: number): void {
 		return;
 	}
 
-	openRequirementByIndex(nextIndex, shouldRenderRequirementEdit() ? 'edit' : 'view');
+	if (currentRequirementViewMode === 'index') {
+		const requirement = currentDocument.requirements[nextIndex];
+		setCoverageRequirementSelectionKey(coverageSelectionKeyForRequirement(requirement, nextIndex), nextIndex);
+	} else {
+		openRequirementByIndex(nextIndex, shouldRenderRequirementEdit() ? 'edit' : 'view');
+	}
 	renderEditor();
 	refreshChrome();
 	renderValidationState();
@@ -347,15 +390,15 @@ function renderEditor(): void {
 	const body = document.createElement('div');
 	body.slot = 'body';
 	body.className = 'editor-root';
-	if (currentIssues.length > 0) {
-		body.append(createValidationSummaryCard());
+	body.append(createValidationSummaryCard());
+	if (!shouldRenderRequirementDetail()) {
+		body.append(createDocumentFieldsCard());
 	}
 	body.append(createRequirementsCard(autoOpenRequirementIndex));
 
 	if (!shouldRenderRequirementDetail()) {
 		body.append(
 			createCoverageSection(),
-			createDocumentFieldsCard(),
 			createTopLevelListCard(
 				'Tags',
 				'Short keywords used for discovery and filtering.',
@@ -675,7 +718,7 @@ function createCoverageSelector(requirements: SpecificationRequirement[], select
 
 	select.value = selection.key;
 	select.addEventListener('change', () => {
-		setCoverageRequirementSelectionKey(select.value);
+		setCoverageRequirementSelectionKey(select.value, select.selectedIndex);
 		renderEditor();
 		refreshChrome();
 		renderValidationState();
@@ -769,14 +812,16 @@ function createCoverageEvidenceDisclosure(
 	);
 }
 
-function setCoverageRequirementSelectionKey(key: string): void {
+function setCoverageRequirementSelectionKey(key: string, indexHint = coverageRequirementSelectionIndexHint): void {
 	coverageRequirementSelectionKey = key;
+	coverageRequirementSelectionIndexHint = indexHint;
 	persistWebviewState();
 }
 
 function ensureCoverageSelectionKey(): void {
 	if (!currentDocument) {
 		coverageRequirementSelectionKey = '';
+		coverageRequirementSelectionIndexHint = -1;
 		return;
 	}
 
@@ -796,17 +841,27 @@ function resolveCoverageRequirementSelection(requirements: SpecificationRequirem
 	if (normalizedKey.length > 0) {
 		if (normalizedKey.startsWith('id:')) {
 			const requirementId = normalizedKey.slice(3);
-			const index = requirements.findIndex((requirement) => stringValue(requirement.id).trim() === requirementId);
-			if (index >= 0) {
+			const hintedRequirement = requirements[coverageRequirementSelectionIndexHint];
+			if (hintedRequirement && stringValue(hintedRequirement.id).trim() === requirementId) {
 				return {
 					key: normalizedKey,
-					index
+					index: coverageRequirementSelectionIndexHint
 				};
+			}
+
+			const matchingIndexes = requirements
+				.map((requirement, index) => ({ requirement, index }))
+				.filter(({ requirement }) => stringValue(requirement.id).trim() === requirementId)
+				.map(({ index }) => index);
+			if (matchingIndexes.length === 1) {
+				coverageRequirementSelectionIndexHint = matchingIndexes[0];
+				return { key: normalizedKey, index: matchingIndexes[0] };
 			}
 		} else if (normalizedKey.startsWith('index:')) {
 			const index = Number.parseInt(normalizedKey.slice(6), 10);
 			if (Number.isFinite(index)) {
 				const resolvedIndex = Math.min(Math.max(index, 0), requirements.length - 1);
+				coverageRequirementSelectionIndexHint = resolvedIndex;
 				const requirement = requirements[resolvedIndex];
 				const requirementId = stringValue(requirement?.id).trim();
 				if (requirementId.length > 0) {
@@ -830,6 +885,7 @@ function resolveCoverageRequirementSelection(requirements: SpecificationRequirem
 	const firstRequirementId = stringValue(firstRequirement?.id).trim();
 	const key = firstRequirementId.length > 0 ? `id:${firstRequirementId}` : 'index:0';
 	coverageRequirementSelectionKey = key;
+	coverageRequirementSelectionIndexHint = 0;
 	return {
 		key,
 		index: 0
@@ -1194,10 +1250,10 @@ function createRequirementsIndexCard(
 	header.className = 'card-header-row';
 	header.append(
 		createSectionHeading(
-			'Requirement index',
+			'Requirement register',
 			requirements.length === 0
 				? 'Add a requirement to start building the specification.'
-				: `${requirements.length} requirement${requirements.length === 1 ? '' : 's'} ready to scan. Open one when you need to edit it.`,
+				: `${requirements.length} requirement${requirements.length === 1 ? '' : 's'} ready to browse, inspect, and edit locally.`,
 			getCoverageDefinitionsHelpText()
 		),
 		createCardHeaderActions(
@@ -1220,23 +1276,69 @@ function createRequirementsIndexCard(
 
 	const entries = createRequirementIndexEntries(requirements);
 	const visibleEntries = getVisibleRequirementIndexEntries(entries);
-	body.append(createRequirementIndexToolbar(entries.length, visibleEntries.length));
+	body.append(createRequirementRegisterViewSwitch(), createRequirementIndexToolbar(entries.length, visibleEntries.length));
+
+	const registerLayout = document.createElement('div');
+	registerLayout.className = 'requirement-register-layout';
+
+	const register = document.createElement('div');
+	register.className = `requirement-register requirement-register--${requirementRegisterView}`;
+	register.setAttribute('aria-label', 'Requirement register results');
 
 	if (visibleEntries.length === 0) {
-		body.append(createRequirementIndexEmptyState(entries.length));
-		card.append(header, body);
-		return card;
+		register.append(createRequirementIndexEmptyState(entries.length));
+	} else {
+		const list = document.createElement('div');
+		list.className = 'inc-list-group inc-list-group--flush inc-list-group--dense requirement-index-list';
+		visibleEntries.forEach((entry) => {
+			list.append(createRequirementIndexRow(entry, selection));
+		});
+		register.append(list);
 	}
 
-	const list = document.createElement('div');
-	list.className = 'inc-list-group inc-list-group--flush inc-list-group--dense requirement-index-list';
-	visibleEntries.forEach((entry) => {
-		list.append(createRequirementIndexRow(entry, selection));
-	});
+	const inspector = document.createElement('aside');
+	inspector.className = 'requirement-register-inspector';
+	inspector.setAttribute('aria-label', 'Selected requirement inspector');
+	inspector.append(createRequirementViewCard(requirements, selection, true));
 
-	body.append(list);
+	registerLayout.append(register, inspector);
+	body.append(registerLayout);
 	card.append(header, body);
 	return card;
+}
+
+function createRequirementRegisterViewSwitch(): HTMLElement {
+	const container = document.createElement('div');
+	container.className = 'requirement-register-view-switch';
+
+	const controls = createButtonGroup('Requirement register view', 'requirement-register-view-buttons');
+	const views: Array<{ value: RequirementRegisterView; label: string; description: string }> = [
+		{ value: 'overview', label: 'Overview', description: 'Show locally derived coverage, trace, notes, and validation summaries.' },
+		{ value: 'reading', label: 'Reading', description: 'Emphasize complete requirement statements with less status chrome.' }
+	];
+
+	for (const view of views) {
+		const button = createActionButton(view.label, view.description, () => {
+			setRequirementRegisterView(view.value);
+			renderEditor();
+			refreshChrome();
+			renderValidationState();
+		}, {
+			variant: requirementRegisterView === view.value ? 'secondary' : 'outline-secondary',
+			size: 'sm'
+		});
+		button.setAttribute('aria-pressed', String(requirementRegisterView === view.value));
+		controls.append(button);
+	}
+
+	const description = document.createElement('p');
+	description.className = 'inc-text inc-text--small inc-text--muted requirement-register-view-description';
+	description.textContent = requirementRegisterView === 'reading'
+		? 'Text-focused reading view'
+		: 'Local coverage and validation overview';
+
+	container.append(controls, description);
+	return container;
 }
 
 function createRequirementIndexEntries(requirements: SpecificationRequirement[]): RequirementIndexEntry[] {
@@ -1455,7 +1557,7 @@ function createCompactRowsSwitch(): HTMLElement {
 	input.className = 'inc-form__check-input';
 	input.checked = requirementCompactRows;
 	input.setAttribute('aria-label', 'Toggle collapsed requirement rows');
-	input.addEventListener('change', () => {
+	input.addEventListener('input', () => {
 		toggleRequirementCompactRows();
 		renderEditor();
 		refreshChrome();
@@ -1527,6 +1629,8 @@ function createRequirementIndexToolbar(totalCount: number, visibleCount: number)
 
 	const meta = document.createElement('div');
 	meta.className = 'inc-text inc-text--small inc-text--muted requirement-index-results';
+	meta.setAttribute('role', 'status');
+	meta.setAttribute('aria-live', 'polite');
 	const countText = visibleCount === totalCount
 		? `${totalCount} requirement${totalCount === 1 ? '' : 's'} shown`
 		: `${visibleCount} of ${totalCount} requirement${totalCount === 1 ? '' : 's'} shown`;
@@ -1624,18 +1728,6 @@ function createRequirementIndexRow(
 	if (isRequirementRowExpanded(path)) {
 		row.classList.add('requirement-index-row--expanded');
 	}
-	row.addEventListener('click', (event) => {
-		const target = event.target as HTMLElement | null;
-		if (target?.closest('.requirement-index-expand') || target?.closest('.requirement-index-open-button')) {
-			return;
-		}
-
-		openRequirementViewByIndex(index);
-		renderEditor();
-		refreshChrome();
-		renderValidationState();
-	});
-
 	const rowHeader = document.createElement('div');
 	rowHeader.className = 'requirement-index-header';
 
@@ -1674,7 +1766,7 @@ function createRequirementIndexRow(
 
 	summaryLine.append(summaryIdentifier, summaryTitle);
 	summaryCopy.append(summaryLine);
-	if (!requirementCompactRows || isRequirementRowExpanded(path)) {
+	if (requirementRegisterView === 'reading' || !requirementCompactRows || isRequirementRowExpanded(path)) {
 		const summaryDescription = document.createElement('span');
 		summaryDescription.className = 'requirement-summary-statement';
 		summaryDescription.textContent = stringValue(requirement.statement).trim() || 'Add the requirement statement.';
@@ -1700,7 +1792,7 @@ function createRequirementIndexRow(
 		meta.append(issuesBadge);
 	}
 
-	if (!requirementCompactRows || isRequirementRowExpanded(path)) {
+	if (requirementRegisterView === 'overview' && (!requirementCompactRows || isRequirementRowExpanded(path))) {
 		const evidence = document.createElement('span');
 		evidence.className = 'inc-text inc-text--small inc-text--muted requirement-index-evidence';
 		evidence.dataset.requirementEvidencePath = path;
@@ -1712,25 +1804,17 @@ function createRequirementIndexRow(
 	openButton.type = 'button';
 	openButton.className = 'requirement-index-open';
 	openButton.setAttribute('aria-label', `Open details for ${getRequirementIdLabel(entry)}`);
+	openButton.setAttribute('aria-pressed', String(isSelected));
 	openButton.append(summaryCopy, meta);
-
-	const explicitOpenButton = createActionButton(
-		'Open',
-		`Open details for ${getRequirementIdLabel(entry)}`,
-		() => {
-			openRequirementViewByIndex(index);
-			renderEditor();
-			refreshChrome();
-			renderValidationState();
-		},
-		{ variant: 'outline-secondary', size: 'sm' }
-	);
-	explicitOpenButton.classList.add('requirement-index-open-button');
-	explicitOpenButton.addEventListener('click', (event) => {
-		event.stopPropagation();
+	openButton.addEventListener('click', () => {
+		setCoverageRequirementSelectionKey(coverageSelectionKeyForRequirement(requirement, index), index);
+		persistWebviewState();
+		renderEditor();
+		refreshChrome();
+		renderValidationState();
 	});
 
-	rowHeader.append(openButton, explicitOpenButton);
+	rowHeader.append(openButton);
 	row.append(rowHeader);
 	return row;
 }
@@ -1757,14 +1841,15 @@ function formatRequirementEvidenceSummary(summary: ReturnType<typeof summarizeRe
 
 function createRequirementViewCard(
 	requirements: SpecificationRequirement[],
-	selection: CoverageSelection
+	selection: CoverageSelection,
+	compactInspector = false
 ): HTMLElement {
 	const detail = document.createElement('inc-card');
 	detail.className = 'requirement-detail-card';
 
 	const body = document.createElement('div');
 	body.slot = 'body';
-	body.className = 'requirement-detail-body';
+	body.className = compactInspector ? 'requirement-detail-body requirement-detail-body--inspector' : 'requirement-detail-body';
 
 	if (selection.index < 0 || !requirements[selection.index]) {
 		body.append(createCard('Select a requirement', 'Choose a row from the requirement table to inspect its details.'));
@@ -1826,7 +1911,7 @@ function createRequirementViewCard(
 	header.append(titleBlock, actions);
 
 	body.append(
-		createSelectedRequirementOverview(selection.index, requirements.length, coverageSummary, issueCount),
+		createSelectedRequirementOverview(selection.index, requirements.length, coverageSummary, issueCount, compactInspector ? '2' : '4'),
 		createReadonlyRequirementField('Requirement id', stringValue(requirement.id).trim() || '—', 'Canonical requirement identifier.'),
 		createReadonlyRequirementField('Title', stringValue(requirement.title).trim() || 'Untitled requirement'),
 		createReadonlyRequirementField('Statement', stringValue(requirement.statement).trim() || 'No requirement statement recorded.', 'Normative statement text.', true),
@@ -1907,18 +1992,8 @@ function createRequirementEditCard(
 		createRequirementField(path, 'title', 'Title', stringValue(requirement.title), false, 'Requirement title'),
 		createRequirementField(path, 'statement', 'Statement', stringValue(requirement.statement), true, 'Normative requirement statement'),
 		createRequirementListField(path, 'notes', 'Notes', requirement.notes ?? [], true, 'Note'),
-		createRequirementEvidenceViewCard(
-			'Coverage',
-			requirement.coverage,
-			'No coverage expectations recorded yet.',
-			'Coverage is shown for reference here and is usually produced outside this editor.'
-		),
-		createRequirementEvidenceViewCard(
-			'Trace',
-			requirement.trace,
-			'No trace links recorded yet.',
-			'Trace is shown for reference here and is usually produced outside this editor.'
-		)
+		createRequirementCoverageEditor(path, requirement),
+		createRequirementTraceEditor(path, requirement)
 	);
 
 	detail.append(header, body, createErrorRegion());
@@ -1929,10 +2004,11 @@ function createSelectedRequirementOverview(
 	index: number,
 	totalRequirements: number,
 	coverageSummary: ReturnType<typeof summarizeRequirementCoverage>,
-	issueCount: number
+	issueCount: number,
+	columns: '2' | '4' = '4'
 ): HTMLElement {
 	const overview = document.createElement('inc-summary-overview');
-	overview.setAttribute('columns', '4');
+	overview.setAttribute('columns', columns);
 	overview.setAttribute('dense', '');
 	overview.className = 'requirement-detail-overview';
 
@@ -2112,7 +2188,7 @@ function createRequirementField(
 
 		setRequirementField(requirement, fieldName, input.value);
 		if (fieldName === 'id') {
-			setCoverageRequirementSelectionKey(coverageSelectionKeyForRequirement(requirement, requirementIndex));
+			setCoverageRequirementSelectionKey(coverageSelectionKeyForRequirement(requirement, requirementIndex), requirementIndex);
 		}
 		commitCurrentDocument();
 	});
@@ -2180,6 +2256,239 @@ function createRequirementListField(
 	control.append(itemsContainer, actions);
 	field.append(label, hint, control, createErrorRegion());
 	return field;
+}
+
+function createRequirementCoverageEditor(requirementPath: string, requirement: SpecificationRequirement): HTMLElement {
+	const card = document.createElement('inc-card');
+	card.className = 'requirement-typed-editor wide';
+
+	const header = document.createElement('div');
+	header.slot = 'header';
+	header.className = 'card-header-row';
+	header.append(createSectionHeading('Coverage expectations', 'Canonical authored expectations; these are not runtime evidence.'));
+
+	const actions = createCardHeaderActions('Coverage actions');
+	if (requirement.coverage) {
+		actions.append(createActionButton('Remove coverage', 'Remove the optional coverage object', () => {
+			delete requirement.coverage;
+			commitCurrentDocument(true);
+			renderEditor();
+			refreshChrome();
+			renderValidationState();
+		}, { variant: 'outline-secondary', size: 'sm' }));
+	} else {
+		actions.append(createActionButton('Add coverage', 'Add canonical coverage expectations using the standard authoring defaults', () => {
+			requirement.coverage = {
+				positive: 'required',
+				negative: 'required',
+				edge: 'required',
+				fuzz: 'optional'
+			};
+			commitCurrentDocument(true);
+			renderEditor();
+			refreshChrome();
+			renderValidationState();
+		}, { variant: 'secondary', size: 'sm' }));
+	}
+	header.append(actions);
+
+	const body = document.createElement('div');
+	body.slot = 'body';
+	body.className = 'form-grid';
+	if (!requirement.coverage) {
+		body.append(createCard('No coverage expectations', 'Add coverage when this requirement should declare positive, negative, edge, and fuzz expectations.'));
+	} else {
+		const dimensions: Array<{ field: CoverageDimension; label: string }> = [
+			{ field: 'positive', label: 'Positive' },
+			{ field: 'negative', label: 'Negative' },
+			{ field: 'edge', label: 'Edge' },
+			{ field: 'fuzz', label: 'Fuzz' }
+		];
+		for (const dimension of dimensions) {
+			body.append(createCoverageExpectationField(requirementPath, requirement, dimension.field, dimension.label));
+		}
+	}
+
+	card.append(header, body, createErrorRegion());
+	return card;
+}
+
+function createCoverageExpectationField(
+	requirementPath: string,
+	requirement: SpecificationRequirement,
+	fieldName: CoverageDimension,
+	labelText: string
+): HTMLElement {
+	const field = document.createElement('inc-field');
+	field.className = 'editor-field';
+	field.setAttribute('label', labelText);
+	field.setAttribute('hint', `${labelText} test expectation.`);
+	field.setAttribute('dense', '');
+	field.dataset.validationPath = `${requirementPath}.coverage.${String(fieldName)}`;
+
+	const select = document.createElement('select');
+	select.className = 'inc-form__select editor-field__control';
+	select.slot = 'control';
+	const options: Array<{ value: RequirementCoverageExpectation[CoverageDimension]; label: string }> = [
+		{ value: 'required', label: 'Required' },
+		{ value: 'optional', label: 'Optional' },
+		{ value: 'deferred', label: 'Deferred' },
+		{ value: 'not_applicable', label: 'Not applicable' }
+	];
+	for (const optionDefinition of options) {
+		const option = document.createElement('option');
+		option.value = String(optionDefinition.value);
+		option.textContent = optionDefinition.label;
+		select.append(option);
+	}
+	select.value = stringValue(requirement.coverage?.[fieldName]) || 'required';
+	select.addEventListener('change', () => {
+		requirement.coverage = {
+			...(requirement.coverage ?? {}),
+			[fieldName]: select.value as RequirementCoverageExpectation[CoverageDimension]
+		};
+		commitCurrentDocument();
+	});
+
+	field.append(select, createErrorRegion());
+	return field;
+}
+
+function createRequirementTraceEditor(requirementPath: string, requirement: SpecificationRequirement): HTMLElement {
+	const card = document.createElement('inc-card');
+	card.className = 'requirement-typed-editor wide';
+
+	const header = document.createElement('div');
+	header.slot = 'header';
+	header.append(createSectionHeading('Canonical trace relationships', 'Repeatable local identifiers and upstream references.'));
+
+	const body = document.createElement('div');
+	body.slot = 'body';
+	body.className = 'requirement-trace-editor';
+	for (const definition of requirementTraceFields) {
+		body.append(createRequirementTraceListField(requirementPath, requirement, definition));
+	}
+
+	card.append(header, body, createErrorRegion());
+	return card;
+}
+
+function createRequirementTraceListField(
+	requirementPath: string,
+	requirement: SpecificationRequirement,
+	definition: { field: RequirementTraceField; label: string; placeholder: string }
+): HTMLElement {
+	const fieldPath = `${requirementPath}.trace.${definition.field}`;
+	const field = document.createElement('inc-field');
+	field.className = 'list-field';
+	field.setAttribute('dense', '');
+	field.dataset.validationPath = fieldPath;
+
+	const label = document.createElement('div');
+	label.slot = 'label';
+	label.className = 'inc-form__label';
+	label.textContent = definition.label;
+
+	const control = document.createElement('div');
+	control.slot = 'control';
+	control.className = 'list-field__control inc-form__control';
+
+	const list = document.createElement('div');
+	list.className = 'requirements-list';
+	const values = requirement.trace?.[definition.field] ?? [];
+	values.forEach((value, index) => {
+		list.append(createRequirementTraceRow(requirement, definition, value, index));
+	});
+
+	const actions = createButtonToolbar(`${definition.label} actions`, 'section-actions');
+	actions.append(createActionButton('Add reference', `Add a ${definition.label.toLowerCase()} reference`, () => {
+		requirement.trace = { ...(requirement.trace ?? {}) };
+		const nextValues = [...(requirement.trace[definition.field] ?? []), ''];
+		requirement.trace[definition.field] = nextValues;
+		commitCurrentDocument(true);
+		renderEditor();
+		refreshChrome();
+		renderValidationState();
+	}, { variant: 'secondary', size: 'sm' }));
+
+	control.append(list, actions);
+	field.append(label, control, createErrorRegion());
+	return field;
+}
+
+function createRequirementTraceRow(
+	requirement: SpecificationRequirement,
+	definition: { field: RequirementTraceField; label: string; placeholder: string },
+	value: string,
+	index: number
+): HTMLElement {
+	const values = requirement.trace?.[definition.field] ?? [];
+	const row = document.createElement('div');
+	row.className = 'list-row';
+
+	const input = document.createElement('input');
+	input.className = 'inc-form__control editor-field__control';
+	input.placeholder = definition.placeholder;
+	input.value = value;
+	input.spellcheck = false;
+	const commitTraceInput = () => {
+		if (!requirement.trace) {
+			return;
+		}
+		const nextValues = [...(requirement.trace[definition.field] ?? [])];
+		nextValues[index] = input.value;
+		requirement.trace = { ...requirement.trace, [definition.field]: nextValues };
+		commitCurrentDocument();
+	};
+	input.addEventListener('change', commitTraceInput);
+	input.addEventListener('keydown', (event) => {
+		if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+			event.preventDefault();
+			commitTraceInput();
+			window.setTimeout(() => {
+				void vscode.postMessage({ type: 'save' });
+			}, 0);
+		}
+	});
+
+	const controls = createButtonGroup(`${definition.label} row actions`, 'list-row__controls', 'sm');
+	controls.append(
+		createIconButton('↑', `Move ${definition.label.toLowerCase()} reference up`, () => moveRequirementTraceValue(requirement, definition.field, index, index - 1), index === 0),
+		createIconButton('↓', `Move ${definition.label.toLowerCase()} reference down`, () => moveRequirementTraceValue(requirement, definition.field, index, index + 1), index === values.length - 1),
+		createIconButton('×', `Remove ${definition.label.toLowerCase()} reference`, () => removeRequirementTraceValue(requirement, definition.field, index), false, 'outline-danger')
+	);
+
+	row.append(input, controls, createErrorRegion());
+	return row;
+}
+
+function moveRequirementTraceValue(requirement: SpecificationRequirement, fieldName: RequirementTraceField, currentIndex: number, targetIndex: number): void {
+	const values = [...(requirement.trace?.[fieldName] ?? [])];
+	if (targetIndex < 0 || targetIndex >= values.length) {
+		return;
+	}
+	moveArrayItem(values, currentIndex, targetIndex);
+	requirement.trace = { ...(requirement.trace ?? {}), [fieldName]: values };
+	commitCurrentDocument(true);
+	renderEditor();
+	refreshChrome();
+	renderValidationState();
+}
+
+function removeRequirementTraceValue(requirement: SpecificationRequirement, fieldName: RequirementTraceField, index: number): void {
+	const trace = { ...(requirement.trace ?? {}) };
+	const values = [...(trace[fieldName] ?? [])];
+	values.splice(index, 1);
+	if (values.length === 0) {
+		delete trace[fieldName];
+	} else {
+		trace[fieldName] = values;
+	}
+	requirement.trace = Object.keys(trace).length === 0 ? undefined : trace;
+	commitCurrentDocument(true);
+	renderEditor();
+	refreshChrome();
+	renderValidationState();
 }
 
 function createListEditor(
@@ -2950,7 +3259,7 @@ function flushPendingRevealCards(): void {
 			const requirement = currentDocument.requirements?.[requirementIndex];
 			if (requirement) {
 				pendingRevealCardPaths.delete(cardPath);
-				setCoverageRequirementSelectionKey(coverageSelectionKeyForRequirement(requirement, requirementIndex));
+				setCoverageRequirementSelectionKey(coverageSelectionKeyForRequirement(requirement, requirementIndex), requirementIndex);
 				currentRequirementViewMode = 'view';
 				selectedRequirementPath = cardPath;
 				continue;
@@ -3015,7 +3324,9 @@ function persistWebviewState(): void {
 		lastCommittedSerialized,
 		expandedCardPaths: Array.from(expandedCardPaths),
 		coverageRequirementSelectionKey,
+		coverageRequirementSelectionIndexHint,
 		requirementsViewMode: currentRequirementViewMode,
+		requirementRegisterView,
 		requirementSearchQuery,
 		requirementIndexFilter,
 		requirementSortKey,
@@ -3256,7 +3567,7 @@ function moveRequirement(currentIndex: number, targetIndex: number): void {
 	if (selectedRequirement) {
 		const nextSelectionIndex = requirements.indexOf(selectedRequirement);
 		if (nextSelectionIndex >= 0) {
-			setCoverageRequirementSelectionKey(coverageSelectionKeyForRequirement(selectedRequirement, nextSelectionIndex));
+			setCoverageRequirementSelectionKey(coverageSelectionKeyForRequirement(selectedRequirement, nextSelectionIndex), nextSelectionIndex);
 		}
 	}
 	commitCurrentDocument(true);
@@ -3273,14 +3584,14 @@ function removeRequirement(index: number): void {
 	const selectedRequirement = currentSelection.index >= 0 ? requirements[currentSelection.index] : undefined;
 	requirements.splice(index, 1);
 	if (requirements.length === 0) {
-		setCoverageRequirementSelectionKey('');
+		setCoverageRequirementSelectionKey('', -1);
 		currentRequirementViewMode = 'index';
 	} else if (selectedRequirement && requirements.includes(selectedRequirement)) {
 		const nextSelectionIndex = requirements.indexOf(selectedRequirement);
-		setCoverageRequirementSelectionKey(coverageSelectionKeyForRequirement(selectedRequirement, nextSelectionIndex));
+		setCoverageRequirementSelectionKey(coverageSelectionKeyForRequirement(selectedRequirement, nextSelectionIndex), nextSelectionIndex);
 	} else {
 		const nextSelectionIndex = Math.min(index, requirements.length - 1);
-		setCoverageRequirementSelectionKey(coverageSelectionKeyForRequirement(requirements[nextSelectionIndex], nextSelectionIndex));
+		setCoverageRequirementSelectionKey(coverageSelectionKeyForRequirement(requirements[nextSelectionIndex], nextSelectionIndex), nextSelectionIndex);
 	}
 	commitCurrentDocument(true);
 	renderEditor();

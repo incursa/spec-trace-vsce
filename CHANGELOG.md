@@ -6,6 +6,13 @@ All notable changes to the SpecTrace for VS Code extension are documented in thi
 
 - No unreleased changes yet.
 
+## [1.1.0] - 2026-07-10
+
+- Reworked the local requirements workspace into a manager-inspired register with persistent inspection, Overview and Reading views, and responsive narrow-pane behavior.
+- Added typed canonical coverage controls and repeatable trace-reference editing while preserving nested extension fields.
+- Improved selected-row contrast, keyboard focus treatment, document-detail access, validation presentation, and Marketplace screenshots.
+- Added traceable requirements, architecture, work-item, verification, round-trip tests, and browser smoke coverage for the new workspace.
+
 ## [1.0.14]
 
 - Corrected Marketplace release guidance and aligned browser-smoke fixtures with the `SpecTrace` product name.
