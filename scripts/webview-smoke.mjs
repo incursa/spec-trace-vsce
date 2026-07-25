@@ -912,20 +912,28 @@ async function openFileByQuickOpen(page, relativePath) {
 	const quickOpenInput = page.locator('.quick-input-widget input').first();
 	await quickOpenInput.waitFor({ state: 'visible', timeout: 10_000 });
 	await quickOpenInput.fill(normalizedRelativePath);
-	await page.locator('.quick-input-widget [role="option"]').first().waitFor({ state: 'visible', timeout: 10_000 });
+	const options = page.locator('.quick-input-widget [role="option"]');
+	await options.first().waitFor({ state: 'visible', timeout: 10_000 });
 
-	const optionTexts = await page.locator('.quick-input-widget [role="option"]').evaluateAll((elements) => elements.map((element) => element.textContent?.trim() ?? ''));
-	const matchingIndex = optionTexts.findIndex((text) => {
-		const normalizedText = text.replace(/\\/g, '/');
-		return normalizedText.includes(normalizedRelativePath) || normalizedText.includes(path.basename(normalizedRelativePath));
-	});
+	const deadline = Date.now() + 15_000;
+	let optionTexts = [];
+	let matchingIndex = -1;
+	while (Date.now() < deadline && matchingIndex < 0) {
+		optionTexts = await options.evaluateAll((elements) => elements.map((element) => element.textContent?.trim() ?? ''));
+		matchingIndex = optionTexts.findIndex((text) => {
+			const normalizedText = text.replace(/\\/g, '/');
+			return normalizedText.includes(normalizedRelativePath) || normalizedText.includes(path.basename(normalizedRelativePath));
+		});
+		if (matchingIndex < 0) {
+			await pause(250);
+			await quickOpenInput.fill(normalizedRelativePath);
+		}
+	}
 	if (matchingIndex < 0) {
 		throw new Error(`Quick open did not surface ${normalizedRelativePath}; saw: ${optionTexts.join(' | ')}`);
 	}
 
-	await quickOpenInput.press('ArrowDown');
-	await pause(100);
-	await quickOpenInput.press('Enter');
+	await options.nth(matchingIndex).click();
 	return;
 }
 

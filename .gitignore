@@ -4,3 +4,5 @@ node_modules
 .vscode-test-web/
 *.vsix
 .env
+/artifacts/packages/
+/.playwright-browsers/

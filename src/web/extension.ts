@@ -7,8 +7,10 @@ import { QualityViewProvider, QUALITY_VIEW_COMMAND } from './quality/host/qualit
 import {
 	RepositoryManager,
 	SPEC_TRACE_CREATE_ARTIFACT_COMMAND,
-	SPEC_TRACE_INITIALIZE_REPOSITORY_COMMAND
+	SPEC_TRACE_INITIALIZE_REPOSITORY_COMMAND,
+	SPEC_TRACE_PLAN_REPOSITORY_REPAIR_COMMAND
 } from './management/repositoryManager.js';
+import { registerTraceabilityView, TRACEABILITY_VALIDATE_COMMAND } from './traceability/traceabilityView.js';
 
 export function activate(context: vscode.ExtensionContext): void {
 	const provider = new SpecificationCustomEditorProvider(context);
@@ -30,6 +32,9 @@ export function activate(context: vscode.ExtensionContext): void {
 	const initializeRepository = vscode.commands.registerCommand(SPEC_TRACE_INITIALIZE_REPOSITORY_COMMAND, async () => {
 		await repositoryManager.promptAndInitializeRepository();
 	});
+	const planRepositoryRepair = vscode.commands.registerCommand(SPEC_TRACE_PLAN_REPOSITORY_REPAIR_COMMAND, async () => {
+		await repositoryManager.showRepositoryRepairPlan();
+	});
 	const createArtifact = vscode.commands.registerCommand(SPEC_TRACE_CREATE_ARTIFACT_COMMAND, async (options?: { kind?: 'specification' | 'architecture' | 'workItem' | 'verification'; domain?: string }) => {
 		await repositoryManager.promptAndCreateArtifact(options);
 	});
@@ -37,10 +42,12 @@ export function activate(context: vscode.ExtensionContext): void {
 		await qualityProvider.openQualityView();
 	});
 	const explorer = registerSpecTraceExplorer(context, provider, markdownProvider, repositoryManager);
+	const traceability = registerTraceabilityView(context);
 
 	context.subscriptions.push(
 		openSmokeFixture,
 		initializeRepository,
+		planRepositoryRepair,
 		createArtifact,
 		openQualityView,
 		qualityProvider,
@@ -56,8 +63,11 @@ export function activate(context: vscode.ExtensionContext): void {
 				retainContextWhenHidden: true
 			}
 		}),
-		explorer
+		explorer,
+		traceability
 	);
 }
+
+export { TRACEABILITY_VALIDATE_COMMAND };
 
 export function deactivate(): void {}

@@ -6,6 +6,18 @@ All notable changes to the SpecTrace for VS Code extension are documented in thi
 
 - No unreleased changes yet.
 
+## [1.2.0] - 2026-07-24
+
+- Added a portable trace, proof, backlink, broken-link, duplicate-ID, validation, and provenance view derived from canonical repository files.
+- Added read-only repository repair planning and explicit confirmation before missing scaffold files are created.
+- Added a separate optional desktop entry point for trust-gated Workbench doctor, validation, quality display, proof-health, and confirmed quality synchronization.
+- Bounded Workbench execution with allowlisted argument contracts, structured JSON, cancellation, timeouts, output limits, and path-containment checks.
+- Kept desktop commands unregistered and hidden in web extension hosts.
+- Added canonical layout, ID, validation-profile, and validation-category contract fixtures plus browser-host coverage.
+- Added a deterministic 128-pixel Marketplace icon export and asset verification.
+- Expanded `release:check` to run tests, build both entries, verify assets, package and inspect the VSIX, and emit a SHA-256 sidecar.
+- Added contributor, notice, CI, GitHub Release, Marketplace, and release-runbook readiness.
+
 ## [1.1.2] - 2026-07-11
 
 - Restored the approved, production-exported SpecTrace activity-bar asset from the brand package.
