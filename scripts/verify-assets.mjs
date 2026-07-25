@@ -3,6 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 const requiredAssets = [
 	'images/icon.png',
 	'images/icon-128.png',
+	'images/traceability-tree.png',
 	'images/spectrace-readme-banner.png',
 	'images/spectrace-wordmark-vscode.svg',
 	'resources/spec-trace.svg'

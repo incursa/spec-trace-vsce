@@ -87,6 +87,16 @@ jobs:
           name: spec-trace-vsix
           path: artifacts/packages
 
+      - name: Require Marketplace secret
+        shell: bash
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::error::VSCE_PAT is required in the marketplace environment."
+            exit 1
+          fi
+
       - name: Publish to Visual Studio Marketplace
         run: npx vsce publish --packagePath "$(find artifacts/packages -name '*.vsix' -print -quit)"
         env:

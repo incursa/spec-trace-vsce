@@ -77,6 +77,10 @@ Every invocation uses argument arrays with `shell: false`, structured JSON outpu
 
 ## Screenshots
 
+### Traceability workspace
+
+![SpecTrace traceability workspace](images/traceability-tree.png)
+
 ### Requirement index
 
 ![Requirement index](images/requirements-index.png)

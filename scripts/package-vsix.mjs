@@ -37,6 +37,7 @@ const requiredEntries = [
 	'extension/dist/web/extension.js',
 	'extension/dist/node/extension.cjs',
 	'extension/images/icon-128.png',
+	'extension/images/traceability-tree.png',
 	'extension/resources/spec-trace.svg'
 ];
 for (const entry of requiredEntries) {
