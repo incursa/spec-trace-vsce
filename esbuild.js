@@ -58,7 +58,7 @@ const testBundlePlugin = {
 };
 
 async function main() {
-	const ctx = await esbuild.context({
+	const browserContext = await esbuild.context({
 	entryPoints: [
 		'src/web/extension.ts',
 		'src/web/editor/webview/main.ts',
@@ -89,11 +89,25 @@ async function main() {
 			esbuildProblemMatcherPlugin, /* add to the end of plugins array */
 		],
 	});
+	const nodeContext = await esbuild.context({
+		entryPoints: ['src/node/extension.ts'],
+		bundle: true,
+		format: 'cjs',
+		minify: production,
+		sourcemap: !production,
+		sourcesContent: false,
+		platform: 'node',
+		target: 'node20',
+		outfile: 'dist/node/extension.cjs',
+		external: ['vscode'],
+		logLevel: 'silent',
+		plugins: [esbuildProblemMatcherPlugin],
+	});
 	if (watch) {
-		await ctx.watch();
+		await Promise.all([browserContext.watch(), nodeContext.watch()]);
 	} else {
-		await ctx.rebuild();
-		await ctx.dispose();
+		await Promise.all([browserContext.rebuild(), nodeContext.rebuild()]);
+		await Promise.all([browserContext.dispose(), nodeContext.dispose()]);
 	}
 }
 

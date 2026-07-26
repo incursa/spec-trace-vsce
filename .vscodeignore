@@ -1,6 +1,7 @@
 .vscode/**
 .github/**
 .vscode-test-web/**
+.playwright-browsers/**
 .workbench/**
 artifacts/**
 src/**

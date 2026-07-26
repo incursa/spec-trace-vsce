@@ -32,6 +32,21 @@ suite('Repository management core', () => {
 		assert.ok(plan.missingFiles.some((file) => file.path === 'specs/requirements/getting-started/SPEC-GETTING-STARTED.json'));
 	});
 
+	test('builds a no-write repair plan for a partially initialized repository', () => {
+		const plan = createBootstrapPlan([
+			'.workbench',
+			'.workbench/config.json',
+			'specs',
+			'specs/requirements',
+			'specs/requirements/_index.md'
+		]);
+
+		assert.strictEqual(plan.state, 'partial');
+		assert.ok(plan.missingDirectories.includes('specs/verification'));
+		assert.ok(plan.missingFiles.some((file) => file.path === 'specs/verification/WB/_index.md'));
+		assert.ok(!plan.missingFiles.some((file) => file.path === '.workbench/config.json'));
+	});
+
 	test('omits existing scaffold paths from the bootstrap plan', () => {
 		const existingPaths = [
 			'.workbench',

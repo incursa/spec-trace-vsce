@@ -1,15 +1,22 @@
-name: Publish
+name: Release
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
+    inputs:
+      publishMarketplace:
+        description: Publish the inspected VSIX to Visual Studio Marketplace
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
-  publish:
+  package:
     runs-on: ubuntu-latest
-    environment: marketplace
 
     steps:
       - name: Checkout
@@ -27,7 +34,70 @@ jobs:
       - name: Run release gate
         run: npm run release:check
 
+      - name: Upload inspected package
+        uses: actions/upload-artifact@v4
+        with:
+          name: spec-trace-vsix
+          path: |
+            artifacts/packages/*.vsix
+            artifacts/packages/*.sha256
+          if-no-files-found: error
+
+  github-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download inspected package
+        uses: actions/download-artifact@v4
+        with:
+          name: spec-trace-vsix
+          path: artifacts/packages
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" artifacts/packages/* --generate-notes --verify-tag
+
+  marketplace:
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.publishMarketplace
+    needs: package
+    runs-on: ubuntu-latest
+    environment: marketplace
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download inspected package
+        uses: actions/download-artifact@v4
+        with:
+          name: spec-trace-vsix
+          path: artifacts/packages
+
+      - name: Require Marketplace secret
+        shell: bash
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::error::VSCE_PAT is required in the marketplace environment."
+            exit 1
+          fi
+
       - name: Publish to Visual Studio Marketplace
-        run: npx @vscode/vsce publish
+        run: npx vsce publish --packagePath "$(find artifacts/packages -name '*.vsix' -print -quit)"
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}

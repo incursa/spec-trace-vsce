@@ -8,17 +8,25 @@ Run the local release gate:
 
 ```bash
 npm run release:check
-npm run test:webview
 ```
 
-Together, these commands verify:
+This command verifies:
 
 - TypeScript compilation
 - ESLint
-- Production web bundle generation
-- Browser-based custom-editor, explorer, and quality-view smoke coverage through `npm run test:webview`
+- Production browser and desktop bundle generation
+- Browser extension-host tests, including proof that desktop commands are not registered on web
+- Browser-based custom-editor, explorer, and quality-view smoke coverage
+- Required brand assets and the exact 128-pixel Marketplace icon
+- VSIX packaging and required/forbidden content inspection
+- SHA-256 sidecar generation
 
-Note: the broader `npm test` suite and the custom editor smoke flow both use `vscode-test-web`, which depends on downloading a VS Code web test harness and can fail transiently due to upstream rate limits. `npm run release:check` intentionally avoids that external dependency and focuses on publishable output, so run the webview smoke locally before dispatching Publish.
+The package and sidecar are written to:
+
+```text
+artifacts/packages/spec-trace-vsce-<version>.vsix
+artifacts/packages/spec-trace-vsce-<version>.vsix.sha256
+```
 
 ## Required Manifest Metadata
 
@@ -58,14 +66,13 @@ Before publishing, verify that:
 
 ## Packaging
 
-After the publisher and account setup are in place, package with the latest `@vscode/vsce`.
+Packaging uses the locked `@vscode/vsce` development dependency.
 
 Recommended flow:
 
 ```bash
 npm install
 npm run release:check
-npx @vscode/vsce package
 ```
 
 If repository metadata is still not set in `package.json`, `vsce` will not be able to resolve relative README image URLs automatically. In that case you must either:
@@ -75,20 +82,24 @@ If repository metadata is still not set in `package.json`, `vsce` will not be ab
 
 ## Publish
 
-The normal release path is the repository's manually triggered **Publish** GitHub Actions workflow (`.github/workflows/publish.yml`). It installs the locked dependencies, runs the release gate, and then publishes the version declared in `package.json` using the repository-level `VSCE_PAT` secret. The job is associated with the `marketplace` environment.
+The normal release path is the repository's **Release** GitHub Actions workflow (`.github/workflows/publish.yml`). A `v<package-version>` tag runs the locked release gate, uploads the VSIX and checksum, creates a GitHub Release, and publishes that inspected VSIX using the repository-level `VSCE_PAT` secret. The Marketplace job remains associated with the protected `marketplace` environment. Manual dispatch can build only, or can explicitly request GitHub Release and Marketplace publication.
 
 To publish from GitHub:
 
-1. Push the release commit to the branch you intend to publish.
-2. Open **Actions** in GitHub and select **Publish**.
-3. Choose **Run workflow**, select the release branch, and confirm the run.
-4. Verify that the release gate and Marketplace publish steps both pass.
+1. Confirm the worktree is clean and `package.json`, `package-lock.json`, and `CHANGELOG.md` agree on the version.
+2. Run `npm ci` and `npm run release:check`.
+3. Verify the generated SHA-256 and inspect the package locally.
+4. Commit and push the release branch, then merge it through the repository's normal review flow.
+5. Create and push the matching `v<version>` tag only after release authorization.
+6. Verify the GitHub Release assets and Marketplace version after the protected environment approves publication.
 
-For a deliberate local publish instead, use:
+For a deliberate recovery publish, use the already-inspected VSIX:
 
 ```bash
-npx @vscode/vsce publish
+npx vsce publish --packagePath artifacts/packages/spec-trace-vsce-<version>.vsix
 ```
+
+If a tag workflow fails before publication, fix the release commit and use a new version; do not move a public release tag. If Marketplace publication alone fails, rerun the protected job or publish the exact GitHub Release VSIX after verifying its checksum.
 
 ## Release Requirements
 

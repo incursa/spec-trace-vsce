@@ -21,6 +21,7 @@ export type { ArtifactKind } from './core.js';
 
 export const SPEC_TRACE_INITIALIZE_REPOSITORY_COMMAND = 'spec-trace-vsce.initializeRepository';
 export const SPEC_TRACE_CREATE_ARTIFACT_COMMAND = 'spec-trace-vsce.createArtifact';
+export const SPEC_TRACE_PLAN_REPOSITORY_REPAIR_COMMAND = 'spec-trace-vsce.planRepositoryRepair';
 
 export interface CreateArtifactCommandOptions {
 	readonly kind?: ArtifactKind;
@@ -91,7 +92,59 @@ export class RepositoryManager {
 		return plan;
 	}
 
+	public async planRepositoryRepair(workspaceFolder = this.getWorkspaceFolder()): Promise<BootstrapPlan | undefined> {
+		if (!workspaceFolder) {
+			void this.windowApi.showErrorMessage('Open a workspace folder before planning SpecTrace repository repair.');
+			return undefined;
+		}
+
+		const existingPaths = await this.collectExistingScaffoldPaths(workspaceFolder);
+		return createBootstrapPlan(existingPaths);
+	}
+
+	public async showRepositoryRepairPlan(workspaceFolder = this.getWorkspaceFolder()): Promise<BootstrapPlan | undefined> {
+		const plan = await this.planRepositoryRepair(workspaceFolder);
+		if (!plan) {
+			return undefined;
+		}
+
+		const preview = {
+			kind: 'spec-trace.repository-repair-plan',
+			state: plan.state,
+			writesRequired: plan.missingDirectories.length + plan.missingFiles.length > 0,
+			missingDirectories: plan.missingDirectories,
+			missingFiles: plan.missingFiles.map((file) => file.path),
+			safety: 'Existing files are never overwritten. Apply repair only after reviewing this plan.'
+		};
+		const document = await vscode.workspace.openTextDocument({
+			language: 'json',
+			content: `${JSON.stringify(preview, undefined, 2)}\n`
+		});
+		await vscode.window.showTextDocument(document, { preview: true });
+		return plan;
+	}
+
 	public async promptAndInitializeRepository(workspaceFolder = this.getWorkspaceFolder()): Promise<void> {
+		const planned = await this.planRepositoryRepair(workspaceFolder);
+		if (!planned) {
+			return;
+		}
+
+		const changes = planned.missingDirectories.length + planned.missingFiles.length;
+		if (changes === 0) {
+			void this.windowApi.showInformationMessage('SpecTrace scaffold is already present in this workspace.');
+			return;
+		}
+
+		const confirmation = await this.windowApi.showInformationMessage(
+			`Apply the SpecTrace repair plan? ${planned.missingDirectories.length} directories and ${planned.missingFiles.length} files will be created; existing files will not be overwritten.`,
+			'Apply repair',
+			'Cancel'
+		);
+		if (confirmation !== 'Apply repair') {
+			return;
+		}
+
 		const plan = await this.initializeRepository(workspaceFolder);
 		if (!plan) {
 			return;

@@ -14,14 +14,19 @@ const playwright = require('playwright');
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const smokeFixtureRelativePath = path.join('specs', 'requirements', 'spec-trace-vsce', 'SPEC-VSCE-EDITOR.json');
 const screenshotDir = process.env.SPEC_TRACE_SMOKE_SCREENSHOT_DIR;
+const marketplaceScreenshotPath = process.env.SPEC_TRACE_MARKETPLACE_SCREENSHOT_PATH;
 const smokeCommit = process.env.SPEC_TRACE_SMOKE_COMMIT;
+const browserChannel = process.env.SPEC_TRACE_BROWSER_CHANNEL;
 let launchedBrowser;
 let coverageSmokeState;
 let qualitySmokeState;
 
 const originalChromiumLaunch = playwright.chromium.launch.bind(playwright.chromium);
-playwright.chromium.launch = async (...args) => {
-	launchedBrowser = await originalChromiumLaunch(...args);
+playwright.chromium.launch = async (options = {}) => {
+	launchedBrowser = await originalChromiumLaunch({
+		...options,
+		...(browserChannel ? { channel: browserChannel } : {})
+	});
 	return launchedBrowser;
 };
 
@@ -73,6 +78,7 @@ async function main() {
 		const frame = await findCustomEditorFrame(page);
 		await frame.locator('.requirement-index-row').first().waitFor({ state: 'visible' });
 		await frame.locator('[data-card-path^="requirements["]').first().waitFor({ state: 'visible' });
+		await captureMarketplaceScreenshot(page);
 		await captureSmokeScreenshot(frame, 'initial');
 
 		await verifyUiKitSurface(frame);
@@ -126,15 +132,20 @@ async function findVisibleInput(page, selector, timeout = 10_000) {
 	const inputs = page.locator(selector);
 	await inputs.first().waitFor({ state: 'attached', timeout });
 
-	const count = await inputs.count();
-	for (let index = 0; index < count; index += 1) {
-		const input = inputs.nth(index);
-		if (await input.isVisible()) {
-			return input;
+	const deadline = Date.now() + timeout;
+	while (Date.now() < deadline) {
+		const count = await inputs.count();
+		for (let index = 0; index < count; index += 1) {
+			const input = inputs.nth(index);
+			if (await input.isVisible()) {
+				return input;
+			}
 		}
+
+		await pause(100);
 	}
 
-	return inputs.first();
+	throw new Error(`Timed out waiting for a visible input matching ${selector}.`);
 }
 
 async function waitForQuickOpenResult(page, targetName, timeout) {
@@ -446,9 +457,15 @@ async function verifySupplementalSectionsAddItemKeepsState(frame) {
 
 async function verifyRequirementDetailNavigation(frame) {
 	assert.ok(coverageSmokeState, 'Coverage smoke fixture state should be initialized.');
-	const firstRequirementRow = frame.locator('.requirement-index-row').first();
-	await firstRequirementRow.locator('.requirement-index-open').click();
+	const coveredRequirementRow = frame.locator('.requirement-index-row').filter({
+		hasText: coverageSmokeState.coveredRequirementId
+	}).first();
+	await coveredRequirementRow.locator('.requirement-index-open').click();
 	await frame.locator('.requirement-detail-card').waitFor({ state: 'visible' });
+	await waitForLocatorText(
+		frame.locator('#selected-requirement-subtitle'),
+		`${coverageSmokeState.coveredRequirementId} · 1 of ${coverageSmokeState.totalRequirements}`
+	);
 	await captureSmokeScreenshot(frame, 'requirement-detail');
 
 	await frame.locator('inc-button', { hasText: 'Reading' }).click();
@@ -482,8 +499,11 @@ async function verifyNarrowRequirementLayout(page, frame) {
 }
 
 async function verifyRequirementNotesAddItemKeepsState(frame) {
-	const firstRequirementRow = frame.locator('.requirement-index-row').first();
-	await firstRequirementRow.locator('.requirement-index-open').click();
+	assert.ok(coverageSmokeState, 'Coverage smoke fixture state should be initialized.');
+	const coveredRequirementRow = frame.locator('.requirement-index-row').filter({
+		hasText: coverageSmokeState.coveredRequirementId
+	}).first();
+	await coveredRequirementRow.locator('.requirement-index-open').click();
 	await frame.locator('.requirement-detail-card').waitFor({ state: 'visible' });
 	await frame.locator('inc-button', { hasText: 'Edit requirement' }).click();
 	await frame.locator('inc-button[variant="primary"]').waitFor({ state: 'visible' });
@@ -721,14 +741,20 @@ async function openManagedMarkdownArtifact(page, categoryLabel, domainLabel, art
 
 	await ensureTreeRowExpanded(treeItems.nth(domainIndex));
 
-	nodes = await readTreeNodes(page);
-	domainIndex = findTreeNodeIndex(nodes, (node, index) => index > categoryIndex && node.name === domainLabel);
-	const artifactIndex = findTreeNodeIndex(nodes, (node, index) => index > domainIndex && node.name === artifactLabel);
-	if (artifactIndex < 0) {
-		throw new Error(`Timed out waiting for artifact ${artifactLabel} under ${categoryLabel}/${domainLabel}.`);
+	const deadline = Date.now() + 10_000;
+	while (Date.now() < deadline) {
+		nodes = await readTreeNodes(page);
+		domainIndex = findTreeNodeIndex(nodes, (node, index) => index > categoryIndex && node.name === domainLabel);
+		const artifactIndex = findTreeNodeIndex(nodes, (node, index) => index > domainIndex && node.name === artifactLabel);
+		if (artifactIndex >= 0) {
+			await treeItems.nth(artifactIndex).click();
+			return;
+		}
+
+		await pause(100);
 	}
 
-	await treeItems.nth(artifactIndex).click();
+	throw new Error(`Timed out waiting for artifact ${artifactLabel} under ${categoryLabel}/${domainLabel}.`);
 }
 
 async function ensureTreeRowExpanded(row) {
@@ -908,30 +934,40 @@ async function closeActiveEditor(page) {
 
 async function openFileByQuickOpen(page, relativePath) {
 	const normalizedRelativePath = relativePath.replace(/\\/g, '/');
+	await focusWorkbenchChrome(page);
 	await page.keyboard.press(process.platform === 'darwin' ? 'Meta+P' : 'Control+P');
 	const quickOpenInput = page.locator('.quick-input-widget input').first();
 	await quickOpenInput.waitFor({ state: 'visible', timeout: 10_000 });
 	await quickOpenInput.fill(normalizedRelativePath);
-	await page.locator('.quick-input-widget [role="option"]').first().waitFor({ state: 'visible', timeout: 10_000 });
+	const options = page.locator('.quick-input-widget [role="option"]');
+	await options.first().waitFor({ state: 'visible', timeout: 10_000 });
 
-	const optionTexts = await page.locator('.quick-input-widget [role="option"]').evaluateAll((elements) => elements.map((element) => element.textContent?.trim() ?? ''));
-	const matchingIndex = optionTexts.findIndex((text) => {
-		const normalizedText = text.replace(/\\/g, '/');
-		return normalizedText.includes(normalizedRelativePath) || normalizedText.includes(path.basename(normalizedRelativePath));
-	});
+	const deadline = Date.now() + 15_000;
+	let optionTexts = [];
+	let matchingIndex = -1;
+	while (Date.now() < deadline && matchingIndex < 0) {
+		optionTexts = await options.evaluateAll((elements) => elements.map((element) => element.textContent?.trim() ?? ''));
+		matchingIndex = optionTexts.findIndex((text) => {
+			const normalizedText = text.replace(/\\/g, '/');
+			return normalizedText.includes(normalizedRelativePath) || normalizedText.includes(path.basename(normalizedRelativePath));
+		});
+		if (matchingIndex < 0) {
+			await pause(250);
+			await quickOpenInput.fill(normalizedRelativePath);
+		}
+	}
 	if (matchingIndex < 0) {
 		throw new Error(`Quick open did not surface ${normalizedRelativePath}; saw: ${optionTexts.join(' | ')}`);
 	}
 
-	await quickOpenInput.press('ArrowDown');
-	await pause(100);
-	await quickOpenInput.press('Enter');
+	await options.nth(matchingIndex).click();
 	return;
 }
 
 async function runCommandPaletteCommand(page, commandLabel) {
+	await focusWorkbenchChrome(page);
 	await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+P' : 'Control+Shift+P');
-	const commandInput = await findVisibleInput(page, 'input', 10_000);
+	const commandInput = await findVisibleInput(page, '.quick-input-widget input', 10_000);
 	await commandInput.fill(`>${commandLabel}`);
 	await waitForQuickOpenResult(page, commandLabel, 10_000);
 
@@ -946,6 +982,12 @@ async function runCommandPaletteCommand(page, commandLabel) {
 	}
 
 	await commandInput.press('Enter');
+}
+
+async function focusWorkbenchChrome(page) {
+	const titlebar = page.locator('.part.titlebar').first();
+	await titlebar.waitFor({ state: 'visible', timeout: 10_000 });
+	await titlebar.click({ position: { x: 200, y: 12 } });
 }
 
 async function createSmokeWorkspace() {
@@ -1275,6 +1317,17 @@ async function captureSmokeScreenshot(frame, name) {
 	const frameElement = await frame.frameElement();
 	await frameElement.screenshot({ path: targetPath });
 	console.log(`Captured smoke screenshot at ${targetPath}`);
+}
+
+async function captureMarketplaceScreenshot(page) {
+	if (!marketplaceScreenshotPath) {
+		return;
+	}
+
+	const targetPath = path.resolve(marketplaceScreenshotPath);
+	await fs.mkdir(path.dirname(targetPath), { recursive: true });
+	await page.screenshot({ path: targetPath });
+	console.log(`Captured Marketplace screenshot at ${targetPath}`);
 }
 
 async function isDetailsOpen(locator) {

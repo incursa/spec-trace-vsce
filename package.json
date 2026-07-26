@@ -2,7 +2,7 @@
   "name": "spec-trace-vsce",
   "displayName": "SpecTrace for VS Code",
   "description": "Browse local SpecTrace artifacts and edit requirements in a manager-inspired workspace.",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "publisher": "incursa",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {
@@ -36,8 +36,19 @@
     "work-items",
     "spec-trace"
   ],
-  "icon": "images/icon.png",
+  "icon": "images/icon-128.png",
+  "main": "./dist/node/extension.cjs",
   "browser": "./dist/web/extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Portable browsing, validation, and text-based edits remain available. Local Workbench process execution is disabled until the workspace is trusted."
+    },
+    "virtualWorkspaces": true
+  },
   "contributes": {
     "commands": [
       {
@@ -47,7 +58,12 @@
       },
       {
         "command": "spec-trace-vsce.initializeRepository",
-        "title": "SpecTrace: Initialize Repository",
+        "title": "SpecTrace: Initialize or Repair Repository",
+        "category": "SpecTrace"
+      },
+      {
+        "command": "spec-trace-vsce.planRepositoryRepair",
+        "title": "SpecTrace: Plan Repository Repair",
         "category": "SpecTrace"
       },
       {
@@ -79,6 +95,41 @@
         "command": "spec-trace-vsce.openQualityView",
         "title": "SpecTrace: Open Quality View",
         "category": "SpecTrace"
+      },
+      {
+        "command": "spec-trace-vsce.validateRepository",
+        "title": "SpecTrace: Validate Canonical Traceability",
+        "category": "SpecTrace"
+      },
+      {
+        "command": "spec-trace-vsce.workbenchDoctor",
+        "title": "SpecTrace: Workbench Doctor",
+        "category": "SpecTrace",
+        "enablement": "!isWeb && isWorkspaceTrusted"
+      },
+      {
+        "command": "spec-trace-vsce.workbenchValidate",
+        "title": "SpecTrace: Workbench Validate",
+        "category": "SpecTrace",
+        "enablement": "!isWeb && isWorkspaceTrusted"
+      },
+      {
+        "command": "spec-trace-vsce.workbenchQualityShow",
+        "title": "SpecTrace: Workbench Show Quality",
+        "category": "SpecTrace",
+        "enablement": "!isWeb && isWorkspaceTrusted"
+      },
+      {
+        "command": "spec-trace-vsce.workbenchProofHealth",
+        "title": "SpecTrace: Workbench Show Proof Health",
+        "category": "SpecTrace",
+        "enablement": "!isWeb && isWorkspaceTrusted"
+      },
+      {
+        "command": "spec-trace-vsce.workbenchQualitySync",
+        "title": "SpecTrace: Workbench Sync Quality Evidence",
+        "category": "SpecTrace",
+        "enablement": "!isWeb && isWorkspaceTrusted"
       }
     ],
     "viewsContainers": {
@@ -96,8 +147,64 @@
           "id": "specTraceExplorer.navigator",
           "name": "Repository Explorer",
           "canCollapse": true
+        },
+        {
+          "id": "specTraceExplorer.traceability",
+          "name": "Trace, Proof & Provenance",
+          "canCollapse": true
         }
       ]
+    },
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "spec-trace-vsce.workbenchDoctor",
+          "when": "!isWeb"
+        },
+        {
+          "command": "spec-trace-vsce.workbenchValidate",
+          "when": "!isWeb"
+        },
+        {
+          "command": "spec-trace-vsce.workbenchQualityShow",
+          "when": "!isWeb"
+        },
+        {
+          "command": "spec-trace-vsce.workbenchProofHealth",
+          "when": "!isWeb"
+        },
+        {
+          "command": "spec-trace-vsce.workbenchQualitySync",
+          "when": "!isWeb"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "SpecTrace",
+      "properties": {
+        "specTrace.workbench.executable": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "Absolute path to the optional Workbench executable. If empty, SpecTrace checks .workbench/bin, .workbench/tools, and PATH."
+        },
+        "specTrace.workbench.timeoutMs": {
+          "type": "number",
+          "default": 30000,
+          "minimum": 1000,
+          "maximum": 120000,
+          "scope": "resource",
+          "description": "Maximum duration for one Workbench invocation."
+        },
+        "specTrace.workbench.maxOutputBytes": {
+          "type": "number",
+          "default": 1048576,
+          "minimum": 16384,
+          "maximum": 5242880,
+          "scope": "resource",
+          "description": "Combined stdout and stderr byte limit for one Workbench invocation."
+        }
+      }
     },
     "customEditors": [
       {
@@ -132,13 +239,21 @@
     "onCustomEditor:spec-trace-vsce.specFileEditor",
     "onCustomEditor:spec-trace-vsce.markdownArtifactEditor",
     "onView:specTraceExplorer.navigator",
+    "onView:specTraceExplorer.traceability",
     "onCommand:spec-trace-vsce.initializeRepository",
+    "onCommand:spec-trace-vsce.planRepositoryRepair",
     "onCommand:spec-trace-vsce.createArtifact",
     "onCommand:spec-trace-vsce.openRepositoryExplorer",
     "onCommand:spec-trace-vsce.refreshRepositoryExplorer",
     "onCommand:spec-trace-vsce.filterRepositoryExplorer",
     "onCommand:spec-trace-vsce.clearRepositoryExplorerFilter",
-    "onCommand:spec-trace-vsce.openQualityView"
+    "onCommand:spec-trace-vsce.openQualityView",
+    "onCommand:spec-trace-vsce.validateRepository",
+    "onCommand:spec-trace-vsce.workbenchDoctor",
+    "onCommand:spec-trace-vsce.workbenchValidate",
+    "onCommand:spec-trace-vsce.workbenchQualityShow",
+    "onCommand:spec-trace-vsce.workbenchProofHealth",
+    "onCommand:spec-trace-vsce.workbenchQualitySync"
   ],
   "scripts": {
     "test": "npm run test:web && npm run test:webview",
@@ -151,7 +266,10 @@
     "watch-web:esbuild": "node esbuild.js --watch",
     "watch-web:tsc": "tsc --noEmit --watch --project tsconfig.json",
     "package-web": "npm run check-types && npm run lint && node esbuild.js --production",
-    "release:check": "npm run package-web",
+    "release:check": "npm test && npm run package-web && npm run verify:assets && npm run package:vsix",
+    "verify:assets": "node scripts/verify-assets.mjs",
+    "generate:assets": "node scripts/generate-assets.mjs",
+    "package:vsix": "node scripts/package-vsix.mjs",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
     "run-in-browser": "vscode-test-web --browserType=chromium --extensionDevelopmentPath=. ."
@@ -161,16 +279,20 @@
     "@incursa/ui-kit": "^1.7.0",
     "@types/assert": "^1.5.11",
     "@types/mocha": "^10.0.10",
+    "@types/node": "^20.19.43",
     "@types/vscode": "^1.110.0",
     "@vscode/test-web": "^0.0.80",
+    "@vscode/vsce": "^3.9.2",
     "ajv": "^8.17.1",
     "assert": "^2.1.0",
     "esbuild": "^0.27.3",
     "eslint": "^9.39.3",
     "glob": "^13.0.6",
+    "jszip": "^3.10.1",
     "mocha": "^11.7.5",
     "npm-run-all": "^4.1.5",
     "playwright": "^1.59.1",
+    "pngjs": "^7.0.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.56.1"
   }
