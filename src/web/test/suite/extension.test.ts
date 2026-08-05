@@ -20,11 +20,15 @@ suite('Web Extension Test Suite', () => {
 			main?: string;
 			browser?: string;
 			contributes?: {
+				commands?: Array<{ title?: string; category?: string }>;
 				menus?: {
 					commandPalette?: Array<{ command?: string; when?: string }>;
 				};
 			};
 		};
+		const specTraceCommands = manifest.contributes?.commands?.filter((entry) => entry.category === 'SpecTrace') ?? [];
+		assert.ok(specTraceCommands.length > 0);
+		assert.ok(specTraceCommands.every((entry) => !entry.title?.startsWith('SpecTrace:')), 'Command titles must not duplicate their category.');
 		assert.strictEqual(manifest.browser, './dist/web/extension.js');
 		assert.strictEqual(manifest.main, './dist/node/extension.cjs');
 		const desktopMenuEntries = manifest.contributes?.menus?.commandPalette?.filter((entry) => entry.command?.startsWith('spec-trace-vsce.workbench')) ?? [];

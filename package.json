@@ -2,7 +2,7 @@
   "name": "spec-trace-vsce",
   "displayName": "SpecTrace for VS Code",
   "description": "Browse local SpecTrace artifacts and edit requirements in a manager-inspired workspace.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "publisher": "incursa",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {
@@ -53,81 +53,81 @@
     "commands": [
       {
         "command": "spec-trace-vsce.openSmokeFixture",
-        "title": "SpecTrace: Open Smoke Fixture",
+        "title": "Open Smoke Fixture",
         "category": "SpecTrace"
       },
       {
         "command": "spec-trace-vsce.initializeRepository",
-        "title": "SpecTrace: Initialize or Repair Repository",
+        "title": "Initialize or Repair Repository",
         "category": "SpecTrace"
       },
       {
         "command": "spec-trace-vsce.planRepositoryRepair",
-        "title": "SpecTrace: Plan Repository Repair",
+        "title": "Plan Repository Repair",
         "category": "SpecTrace"
       },
       {
         "command": "spec-trace-vsce.createArtifact",
-        "title": "SpecTrace: Create Artifact",
+        "title": "Create Artifact",
         "category": "SpecTrace"
       },
       {
         "command": "spec-trace-vsce.openRepositoryExplorer",
-        "title": "SpecTrace: Open Repository Explorer",
+        "title": "Open Repository Explorer",
         "category": "SpecTrace"
       },
       {
         "command": "spec-trace-vsce.refreshRepositoryExplorer",
-        "title": "SpecTrace: Refresh Repository Explorer",
+        "title": "Refresh Repository Explorer",
         "category": "SpecTrace"
       },
       {
         "command": "spec-trace-vsce.filterRepositoryExplorer",
-        "title": "SpecTrace: Filter Repository Explorer",
+        "title": "Filter Repository Explorer",
         "category": "SpecTrace"
       },
       {
         "command": "spec-trace-vsce.clearRepositoryExplorerFilter",
-        "title": "SpecTrace: Clear Repository Explorer Filter",
+        "title": "Clear Repository Explorer Filter",
         "category": "SpecTrace"
       },
       {
         "command": "spec-trace-vsce.openQualityView",
-        "title": "SpecTrace: Open Quality View",
+        "title": "Open Quality View",
         "category": "SpecTrace"
       },
       {
         "command": "spec-trace-vsce.validateRepository",
-        "title": "SpecTrace: Validate Canonical Traceability",
+        "title": "Validate Canonical Traceability",
         "category": "SpecTrace"
       },
       {
         "command": "spec-trace-vsce.workbenchDoctor",
-        "title": "SpecTrace: Workbench Doctor",
+        "title": "Workbench Doctor",
         "category": "SpecTrace",
         "enablement": "!isWeb && isWorkspaceTrusted"
       },
       {
         "command": "spec-trace-vsce.workbenchValidate",
-        "title": "SpecTrace: Workbench Validate",
+        "title": "Workbench Validate",
         "category": "SpecTrace",
         "enablement": "!isWeb && isWorkspaceTrusted"
       },
       {
         "command": "spec-trace-vsce.workbenchQualityShow",
-        "title": "SpecTrace: Workbench Show Quality",
+        "title": "Workbench Show Quality",
         "category": "SpecTrace",
         "enablement": "!isWeb && isWorkspaceTrusted"
       },
       {
         "command": "spec-trace-vsce.workbenchProofHealth",
-        "title": "SpecTrace: Workbench Show Proof Health",
+        "title": "Workbench Show Proof Health",
         "category": "SpecTrace",
         "enablement": "!isWeb && isWorkspaceTrusted"
       },
       {
         "command": "spec-trace-vsce.workbenchQualitySync",
-        "title": "SpecTrace: Workbench Sync Quality Evidence",
+        "title": "Workbench Sync Quality Evidence",
         "category": "SpecTrace",
         "enablement": "!isWeb && isWorkspaceTrusted"
       }
