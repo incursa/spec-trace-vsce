@@ -4,16 +4,16 @@
 
 SpecTrace for VS Code is a genuine web extension for working inside a repository that stores canonical SpecTrace artifacts. The same portable browsing, validation, traceability, and editing core runs in desktop VS Code and browser hosts. Desktop VS Code adds an optional, trust-gated Workbench integration.
 
-The current preview focuses on four high-value surfaces:
+The extension provides four primary surfaces:
 
 - A repository explorer that groups SpecTrace artifacts by category and domain.
 - A local-only custom editor for specification JSON files, with a manager-inspired requirement register, persistent inspector, and focused typed editing.
 - A browser-safe trace, proof, backlink, broken-link, duplicate-ID, and provenance view derived directly from canonical repository files.
 - An optional desktop boundary for deterministic Workbench doctor, validation, quality, and proof-health commands.
 
-## Current Preview
+## Support level
 
-This extension is still in preview while its editing and repository-management surfaces continue to mature.
+This extension is published as a preview. Treat editing and repository-management behavior as a preview API, while canonical SpecTrace files remain the source of truth and can always be edited as JSON.
 
 ## Features
 
@@ -95,7 +95,7 @@ Every invocation uses argument arrays with `shell: false`, structured JSON outpu
 
 ## Workspace Expectations
 
-The extension assumes a SpecTrace-style repository layout. The current explorer and custom editor are built around paths like:
+The extension assumes a SpecTrace-style repository layout. The explorer and custom editor use paths like:
 
 ```text
 specs/
@@ -132,10 +132,6 @@ npm run run-in-browser
 ```
 
 `npm run release:check` runs the web-host and webview tests, builds both browser and desktop entry points, verifies brand assets, creates and inspects the VSIX, and writes a SHA-256 sidecar under `artifacts/packages/`.
-
-## Preview Status
-
-- The extension is still marked as preview while the surface matures.
 
 ## Release Notes
 
